@@ -1,1 +1,1 @@
-rootProject.name = "edge-agent"
+rootProject.name = "edge-ai-gateway"
