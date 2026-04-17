@@ -1,9 +1,8 @@
-package thingai.edge.agent.api;
+package thingai.edge.aigateway.api;
 
 import io.javalin.Javalin;
-import io.javalin.config.JavalinConfig;
-import thingai.edge.agent.api.routes.RouteChat;
-import thingai.edge.agent.api.routes.RouteRoot;
+import thingai.edge.aigateway.api.routes.RouteChat;
+import thingai.edge.aigateway.api.routes.RouteRoot;
 
 import static io.javalin.apibuilder.ApiBuilder.path;
 

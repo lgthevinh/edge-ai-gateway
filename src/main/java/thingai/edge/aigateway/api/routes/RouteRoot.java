@@ -1,4 +1,4 @@
-package thingai.edge.agent.api.routes;
+package thingai.edge.aigateway.api.routes;
 
 import io.javalin.apibuilder.EndpointGroup;
 

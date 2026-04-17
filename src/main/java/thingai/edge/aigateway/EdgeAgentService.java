@@ -1,4 +1,4 @@
-package thingai.edge.agent;
+package thingai.edge.aigateway;
 
 import org.thingai.base.Service;
 import org.thingai.base.log.ILog;

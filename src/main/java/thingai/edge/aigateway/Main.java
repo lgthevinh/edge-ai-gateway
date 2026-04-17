@@ -1,6 +1,6 @@
-package thingai.edge.agent;
+package thingai.edge.aigateway;
 
-import thingai.edge.agent.api.ApiServer;
+import thingai.edge.aigateway.api.ApiServer;
 
 public class Main {
     public static void main(String[] args) {
