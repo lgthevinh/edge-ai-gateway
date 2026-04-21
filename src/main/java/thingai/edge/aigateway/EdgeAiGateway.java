@@ -3,13 +3,13 @@ package thingai.edge.aigateway;
 import org.thingai.base.Service;
 import org.thingai.base.log.ILog;
 
-public class EdgeAgentService extends Service {
-    private static final String TAG = "EdgeAgentService";
+public class EdgeAiGateway extends Service {
+    private static final String TAG = "EdgeAiGateway";
 
-    protected EdgeAgentService() {
-        super("edge-agent");
+    protected EdgeAiGateway() {
+        super("edge-ai-gateway");
         setVersion("0.1.0");
-        setAppDirName("edge-agent");
+        setAppDirName("edge-ai-gateway");
         ILog.ENABLE_LOGGING = true;
         ILog.logLevel = ILog.DEBUG;
     }

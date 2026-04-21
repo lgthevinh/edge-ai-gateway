@@ -4,7 +4,7 @@ import thingai.edge.aigateway.api.ApiServer;
 
 public class Main {
     public static void main(String[] args) {
-        EdgeAgentService service = new EdgeAgentService();
+        EdgeAiGateway service = new EdgeAiGateway();
         service.init();
 
         // Start API server
