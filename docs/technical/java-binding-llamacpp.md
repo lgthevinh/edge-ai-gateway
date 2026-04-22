@@ -100,6 +100,136 @@ One shared library, platform-named:
 
 ---
 
+## 4a. End-to-End Flow (How It Works Internally)
+
+This section walks the full request path from JVM startup through inference to shutdown — useful for reasoning about performance, concurrency, and how rk-llama.cpp slots into the build.
+
+### Architectural diagram
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  Application (Java)                                          │
+│  new LlamaModel(modelParams).complete(inferParams)           │
+└────────────────────────┬─────────────────────────────────────┘
+                         │
+            ┌────────────▼──────────────┐
+            │  LlamaModel.java          │  Java public API
+            │  - native method decls    │  + AutoCloseable
+            └────────────┬──────────────┘
+                         │ JNI
+            ┌────────────▼──────────────┐
+            │  libjllama.so             │  C++ JNI bridge
+            │  jllama.cpp + server.hpp  │  (server.hpp = llama.cpp's
+            │                           │   examples/server, embedded)
+            └────────────┬──────────────┘
+                         │ direct C++ calls
+            ┌────────────▼──────────────┐
+            │  llama.cpp + ggml         │  statically linked into
+            │  - GGUF loader            │  the same libjllama.so
+            │  - sampler, KV cache      │
+            └────────────┬──────────────┘
+                         │
+                ┌────────┴────────┐
+                ▼                 ▼
+          CPU (BLAS)      GPU (CUDA/Metal/Vulkan)
+                          or NPU (rk-llama.cpp → RKNN)
+```
+
+### Stage 1: JVM startup — native library load
+
+`LlamaModel`'s static initializer runs `LlamaLoader.initialize()`, which:
+
+1. Detects OS + architecture via `OSInfo.java`
+2. Searches the priority list from §4 for `libjllama.{so,dylib,dll}`
+3. Calls `System.load()` to map the library into the JVM process
+4. The OS dynamic linker resolves transitive deps (libstdc++, CUDA runtime, librknnrt, etc.)
+5. JNI wires Java `native` method declarations to their C symbols in the loaded library
+
+After this, the binding is "armed" — but no model is loaded yet.
+
+### Stage 2: `new LlamaModel(params)` — model load (expensive, once)
+
+```java
+public LlamaModel(ModelParameters parameters) {
+    loadModel(parameters.toArray());
+}
+```
+
+`ModelParameters.toArray()` produces a C-style `argv` from the CLI param map:
+
+```
+["", "--model", "models/gemma.gguf", "--ctx-size", "4096",
+ "--n-gpu-layers", "43", "--threads", "4", ...]
+```
+
+Crossing JNI as a `String[]`, on the C++ side `loadModel`:
+
+1. Feeds the args into llama.cpp **server's argument parser** (the same parser `llama-server` uses on the command line)
+2. Calls `llama_model_load_from_file()` — GGUF read from disk into RAM, optionally offloaded to GPU/NPU
+3. Creates a `llama_context` — KV cache buffers allocated based on `ctx_size`
+4. Stores the native context pointer on the Java object as a `long` handle (standard JNI pattern)
+
+This is the **only expensive step** in normal operation. After construction the model lives in native memory until `close()` — see §5.2.
+
+### Stage 3: Inference — `complete()` / `generate()` / `embed()`
+
+`InferenceParameters.toString()` (via `JsonParameters`) serializes to a JSON object:
+
+```json
+{
+  "prompt": "Hello",
+  "temperature": 0.7,
+  "n_predict": 256,
+  "stop": ["</s>"],
+  "stream": false
+}
+```
+
+The JSON crosses JNI as a `String`. On the C++ side:
+
+1. `jllama.cpp` invokes the **server's request handler** — the same code path that handles `POST /completion` in `llama-server`
+2. The request is queued into a **slot** (server.hpp's slot abstraction)
+3. Tokenization, prompt processing, and the sampling loop run entirely in native code
+4. **Blocking mode (`complete`)**: returns the full string when generation finishes
+5. **Streaming mode (`generate`)**: returns a `LlamaIterable`. Under the hood Java repeatedly calls a native `receiveCompletion()` that blocks for the next chunk and returns a `LlamaOutput`. This is a poll model, **not** C-to-Java callbacks — simpler and avoids JNI callback complexity.
+
+### Stage 4: `model.close()` — frees native memory
+
+`close()` calls native `delete()`, which:
+1. Frees the `llama_context` (KV cache, sampler state)
+2. Frees the `llama_model` (weights from RAM/VRAM)
+3. Releases slot resources
+
+The Java object is unusable afterwards. See §5.2 — in steady-state servers this runs only at shutdown.
+
+### Key architectural choices
+
+**A. Embeds the server, not the bare C API.** This is the single biggest design decision. java-llama.cpp does not wrap `llama.h` one-to-one; it links in `server.hpp` (from `llama.cpp/examples/server`) and feeds it CLI args + JSON requests.
+
+- *Pros:* free chat templates, grammar/JSON-schema, OpenAI-shaped requests, slot management, less Java code to maintain.
+- *Cons:* API surface limited to what the server exposes. Adding new params (e.g., rk-llama.cpp NPU knobs) requires modifying both the server's arg parser AND the JNI bridge. More memory overhead than a minimal wrapper would have.
+
+**B. Two parameter formats reflect two boundaries.**
+
+| Builder              | Format       | Crosses JNI as | Consumed by              |
+|----------------------|--------------|----------------|--------------------------|
+| `ModelParameters`    | CLI argv     | `String[]`     | server's arg parser      |
+| `InferenceParameters`| JSON object  | `String`       | server's request handler |
+
+Mirrors exactly how `llama-server` is used in practice: CLI flags at startup, JSON bodies per HTTP request.
+
+**C. Native handle stored in Java object.** The C++ `llama_context*` is held as a `long` field on `LlamaModel`. All native methods take this handle implicitly via `this`. The handle is invalidated by `close()`.
+
+**D. Single shared library.** JNI bridge + llama.cpp + ggml + chosen backend (CUDA/Metal/RKNN/etc.) all link into one `libjllama.so`. There is no separate `libllama.so` to ship. **Swapping backends means rebuilding `libjllama.so` against a different ggml configuration (or against rk-llama.cpp).**
+
+### Implications for Edge Agent
+
+1. **rk-llama.cpp swap is a build problem, not a Java-code problem.** Rebuild `libjllama.so` against rk-llama.cpp, drop it in `native/linux-aarch64-rk/`, point `-Dde.kherud.llama.lib.path` at it. Java code is unchanged across backends.
+2. **Chat templates may already work natively.** llama.cpp's server template engine is exposed via `applyTemplate()` + `setUseChatTemplate(true)`. The Gemma 4 template stored in GGUF metadata may render without a Java template renderer. Probe this before designing a custom renderer.
+3. **The slot model constrains concurrency.** One `LlamaModel` instance effectively serves one in-flight request at a time. To handle concurrent requests with isolated KV caches you need either multiple `LlamaModel` instances (multiplies RAM/VRAM) or a single instance with serialized access. This is a key decision for the `InferenceEngine` layer design.
+
+---
+
 ## 5. Core Java API
 
 ### 5.1 LlamaModel
