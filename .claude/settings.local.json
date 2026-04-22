@@ -3,7 +3,9 @@
     "allow": [
       "Bash(./gradlew compileJava)",
       "WebSearch",
-      "WebFetch(domain:javalin.io)"
+      "WebFetch(domain:javalin.io)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
