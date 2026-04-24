@@ -1,5 +1,8 @@
 # Integrate java llama.cpp binding with rk-llama.cpp
 
+## Note
+- Apr-24: Unable to use llama.cpp binding with rk-llama.cpp due to ABI incompatibility.
+
 ## Task Description
 1. Research and understand the java llama.cpp binding
 2. Understanding the integration of binding llama.cpp into java using the java llama.cpp binding
