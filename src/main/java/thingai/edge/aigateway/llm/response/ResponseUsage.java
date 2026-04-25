@@ -1,8 +1,15 @@
 package thingai.edge.aigateway.llm.response;
 
+import com.google.gson.annotations.SerializedName;
+
 public class ResponseUsage {
+    @SerializedName("prompt_tokens")
     private int promptTokens;
+
+    @SerializedName("completion_tokens")
     private int completionTokens;
+
+    @SerializedName("total_tokens")
     private int totalTokens;
 
     public ResponseUsage() {

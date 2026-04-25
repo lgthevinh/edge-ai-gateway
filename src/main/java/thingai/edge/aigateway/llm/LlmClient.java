@@ -5,6 +5,7 @@ import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.message.MessageStreamCallback;
 import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.message.Message;
+import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.net.URI;
@@ -30,26 +31,13 @@ public class LlmClient {
         this.baseModel = baseModel;
     }
 
-    public String sendMessage(Message[] history, String prompt) {
+    public Response chatCompletion(Message[] history, String prompt) {
+        ILog.d(TAG, "chatCompletion");
+        // build messages array
         Message[] message = new Message[history.length+1];
         message[history.length] = new Message(MessageRole.USER, prompt);
-        return chatCompletion(message);
-    }
 
-    public void sendMessageAsync(Message[] history, String prompt, MessageStreamCallback callback) {
-
-    }
-
-    public boolean healthCheck() {
-        return true;
-    }
-
-    public void close() {
-
-    }
-
-    private String chatCompletion(Message[] message) {
-        ILog.d(TAG, "chatCompletion");
+        // build payload
         Map<String, Object> map = Map.of(
                 "model", baseModel,
                 "messages", message,
@@ -64,19 +52,25 @@ public class LlmClient {
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
 
+        // call llm
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-            JsonObject jsonResponse = JsonUtil.fromJson(response.body(), JsonObject.class);
-
-            ILog.d(TAG, "chatCompletion", jsonResponse.toString());
-
-            return jsonResponse.getAsJsonArray("choices")
-                    .get(0).getAsJsonObject()
-                    .getAsJsonObject("message")
-                    .get("content").getAsString();
+            return JsonUtil.fromJson(response.body(), Response.class);
         } catch (Exception e) {
             ILog.d(TAG, e.getMessage());
             return null;
         }
+    }
+
+    public void chatCompletionAsync(Message[] history, String prompt, MessageStreamCallback callback) {
+
+    }
+
+    public boolean healthCheck() {
+        return true;
+    }
+
+    public void close() {
+
     }
 }

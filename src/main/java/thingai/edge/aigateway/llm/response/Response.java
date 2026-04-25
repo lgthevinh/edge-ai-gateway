@@ -1,7 +1,12 @@
 package thingai.edge.aigateway.llm.response;
 
+import com.google.gson.annotations.SerializedName;
+
 public class Response {
+    @SerializedName("choices")
     private ResponseChoice[] choices;
+
+    @SerializedName("usage")
     private ResponseUsage usage;
 
     public Response() {
