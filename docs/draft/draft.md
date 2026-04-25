@@ -1,0 +1,39 @@
+### Chat completion response
+```json
+{
+   "choices":[
+      {
+         "finish_reason":"stop",
+         "index":0,
+         "message":{
+            "role":"assistant",
+            "content":"Hello! How can I help you today?"
+         }
+      }
+   ],
+   "created":1777103162,
+   "model":"ggml-org/gemma-4-E2B-it-GGUF:Q8_0",
+   "system_fingerprint":"b8673-8df5be13c",
+   "object":"chat.completion",
+   "usage":{
+      "completion_tokens":11,
+      "prompt_tokens":10,
+      "total_tokens":21,
+      "prompt_tokens_details":{
+         "cached_tokens":0
+      }
+   },
+   "id":"chatcmpl-xYlzSyM7he3CyRojVh4V83hynJ1HWRSP",
+   "timings":{
+      "cache_n":0,
+      "prompt_n":10,
+      "prompt_ms":857.938,
+      "prompt_per_token_ms":85.7938,
+      "prompt_per_second":11.655853919513998,
+      "predicted_n":11,
+      "predicted_ms":1551.314,
+      "predicted_per_token_ms":141.02854545454545,
+      "predicted_per_second":7.090763056350938
+   }
+}
+```

@@ -107,7 +107,7 @@ The existing `org.thingai.base.Service` base class in `EdgeAiGateway` governs st
 │             │                             │                      │      │
 │  ┌──────────▼───────────┐                 │                      │      │
 │  │ SQLite  (DaoSqlite)  │                 │                      │      │
-│  │ sessions,messages,…  │                 │                      │      │
+│  │ sessions,llmMessages,…  │                 │                      │      │
 │  └──────────────────────┘                 │                      │      │
 └───────────────────────────────────────────┼──────────────────────┼──────┘
                                             │                      │
@@ -131,7 +131,7 @@ Client                 RouteChat          AgentRunner        SessionStore    Too
   ├───────────────────────▶│ open SSE         │                   │                │                    │                    │
   │                        ├─────────────────▶│ run(session,input,sink)            │                    │                    │
   │                        │                  ├──load session────▶│                │                    │                    │
-  │                        │                  │◀──messages[]──────┤                │                    │                    │
+  │                        │                  │◀──llmMessages[]──────┤                │                    │                    │
   │                        │                  ├──getToolSchemas───────────────────▶│                    │                    │
   │                        │                  │◀──openai-schema[]──────────────────┤                    │                    │
   │                        │                  ├─append user msg──▶│                │                    │                    │
@@ -172,7 +172,7 @@ Gateway is the only consumer; llama-server is managed as a private child process
 |---|---|---|
 | `GET /health` | Readiness check | Polled on startup; used by `LlamaServerProcess` to know when to declare "ready" |
 | `POST /v1/chat/completions` | Inference (streaming and non-streaming) | Every agent turn |
-| `POST /tokenize` | Token count for context-budget decisions | Before building `messages[]` that might exceed `-c` |
+| `POST /tokenize` | Token count for context-budget decisions | Before building `llmMessages[]` that might exceed `-c` |
 | `GET /props` | Model metadata (context size, model name) | Once at startup, cached |
 
 #### Startup
@@ -209,7 +209,7 @@ On `onServiceShutdown()`: send SIGTERM, wait 5s, SIGKILL if still alive.
   "top_k": 40,
   "max_tokens": 1024,
   "stop": ["<end_of_turn>"],
-  "messages": [
+  "llmMessages": [
     {"role": "system", "content": "<agent.systemInstruction>"},
     {"role": "user", "content": "..."},
     {"role": "assistant", "content": "...", "tool_calls": [

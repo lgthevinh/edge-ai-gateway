@@ -1,13 +1,13 @@
-package thingai.edge.aigateway.agents;
+package thingai.edge.aigateway.agent;
 
-public class AgentEntity {
+public class Agent {
     private String name;
     private String systemInstruction;
     private String model;
     private String[] toolKit;
     private int[] samplingParams; // temperature, top_p, top_k
 
-    public AgentEntity(String name, String systemInstruction, String model, String[] toolKit) {
+    public Agent(String name, String systemInstruction, String model, String[] toolKit) {
         this.name = name;
         this.systemInstruction = systemInstruction;
         this.model = model;

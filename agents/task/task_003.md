@@ -45,20 +45,20 @@ AiServices.builder(MyInterface.class)
 Internally (`DefaultAiServices.build()`):
 - All config stored in `AiServiceContext`
 - `Proxy.newProxyInstance(...)` wraps an `InvocationHandler`
-- Each call: resolve memory by `@MemoryId` param → build messages → call LLM → enter tool-call loop → return result
+- Each call: resolve memory by `@MemoryId` param → build llmMessages → call LLM → enter tool-call loop → return result
 
 We do not use dynamic proxies (no annotation-driven interface scanning needed for our use case). We implement the `AgentRunner` directly.
 
 #### Tool-call loop (core, verbatim from `ToolService`)
 
 ```java
-List<ChatMessage> messages = buildInitialMessages(system, memory, userInput);
-ChatResponse response = model.chat(messages, toolSpecs);
+List<ChatMessage> llmMessages = buildInitialMessages(system, memory, userInput);
+ChatResponse response = model.chat(llmMessages, toolSpecs);
 
 for (int i = 0; i < maxIterations; i++) {
     AiMessage ai = response.aiMessage();
     memory.add(ai);
-    messages.add(ai);
+    llmMessages.add(ai);
     if (!ai.hasToolExecutionRequests()) break;
 
     for (ToolExecutionRequest req : ai.toolExecutionRequests()) {
@@ -66,9 +66,9 @@ for (int i = 0; i < maxIterations; i++) {
         String result = exec.execute(req, memoryId);
         ToolExecutionResultMessage res = ToolExecutionResultMessage.from(req.id(), req.name(), result);
         memory.add(res);
-        messages.add(res);
+        llmMessages.add(res);
     }
-    response = model.chat(messages, toolSpecs);  // re-call LLM
+    response = model.chat(llmMessages, toolSpecs);  // re-call LLM
 }
 return response;
 ```
@@ -134,7 +134,7 @@ record ToolResult(String callId, String name, String result, String error) {}
 interface ChatMemory {
     String sessionId();
     void add(ChatMessage message);
-    List<ChatMessage> messages();
+    List<ChatMessage> llmMessages();
     void trimToFit(int maxMessages);       // sliding window
     void clear();
 }
@@ -142,7 +142,7 @@ interface ChatMemory {
 // Persistence backend for ChatMemory
 interface ChatMemoryStore {
     List<ChatMessage> load(String sessionId);
-    void save(String sessionId, List<ChatMessage> messages);
+    void save(String sessionId, List<ChatMessage> llmMessages);
     void delete(String sessionId);
 }
 
@@ -195,11 +195,11 @@ interface AgentEventSink {
 5. AgentRunner:
    a. Load ChatMemory for sessionId (LRU cache → SQLite fallback)
    b. memory.add(UserMessage(input))
-   c. Build request: [system] + memory.messages() + toolSchemas
+   c. Build request: [system] + memory.llmMessages() + toolSchemas
    d. POST llama-server /v1/chat/completions (stream=true)
    e. Tool-call loop (see D4)
    f. memory.add(FinalAssistantMessage)
-   g. ChatMemoryStore.save(sessionId, messages)
+   g. ChatMemoryStore.save(sessionId, llmMessages)
    h. sink.onFinal(...)
 6. RouteChat closes SSE stream
 ```
@@ -243,8 +243,8 @@ class SessionMessageRecord {
 ```
 
 **Context overflow strategy — sliding window:**
-- Before each LLM call: count messages excluding the system message.
-- If count > `maxMessages` (default 50), drop oldest non-system messages in pairs (user+assistant) to preserve coherence.
+- Before each LLM call: count llmMessages excluding the system message.
+- If count > `maxMessages` (default 50), drop oldest non-system llmMessages in pairs (user+assistant) to preserve coherence.
 - Pre-flight token check via `POST /tokenize` if within 20% of the llama-server `-c` limit.
 - System message is never evicted (mirrors LangChain4j invariant).
 
@@ -318,12 +318,12 @@ Both are unified behind the `Tool` interface — `AgentRunner` sees one flat map
 
 ```java
 // AgentRunner.run() — core loop
-List<Map<String,Object>> messages = buildMessages(agent.systemInstruction(), memory);
+List<Map<String,Object>> llmMessages = buildMessages(agent.systemInstruction(), memory);
 List<JsonObject> toolSchemas = toolRegistry.schemasFor(agent.toolKit());
 
 int turn = 0;
 sink.onLlmStart(turn);
-LlamaResponse response = llamaClient.chat(messages, toolSchemas, agent.samplingParams(), tokenSink);
+LlamaResponse response = llamaClient.chat(llmMessages, toolSchemas, agent.samplingParams(), tokenSink);
 
 while (turn++ < MAX_ITERATIONS) {
     if (response.finishReason() != FinishReason.TOOL_CALLS) break;
@@ -339,14 +339,14 @@ while (turn++ < MAX_ITERATIONS) {
         ToolResult tr = new ToolResult(call.id(), call.name(), result, null);
         sink.onToolResult(tr);
 
-        messages.add(assistantMessageWith(response.toolCalls()));
-        messages.add(toolResultMessage(tr));
+        llmMessages.add(assistantMessageWith(response.toolCalls()));
+        llmMessages.add(toolResultMessage(tr));
         memory.add(AssistantMessage.withToolCalls(response.toolCalls()));
         memory.add(ToolMessage.from(tr));
     }
 
     sink.onLlmStart(turn);
-    response = llamaClient.chat(messages, toolSchemas, agent.samplingParams(), tokenSink);
+    response = llamaClient.chat(llmMessages, toolSchemas, agent.samplingParams(), tokenSink);
 }
 
 String finalText = response.content();
@@ -517,7 +517,7 @@ Each `ToolExecutor.execute(...)` call is wrapped in try/catch. A tool failure pr
 
 #### 6. `SystemMessage` is always first and never evicted
 
-Mirrors LangChain4j invariant: the agent's `systemInstruction` is injected as `messages[0]` on every request, not stored in `ChatMemory`. This ensures it is always present even after memory compaction. When evicting old messages, always count from index 1.
+Mirrors LangChain4j invariant: the agent's `systemInstruction` is injected as `llmMessages[0]` on every request, not stored in `ChatMemory`. This ensures it is always present even after memory compaction. When evicting old llmMessages, always count from index 1.
 
 #### 7. Sub-agent sessions are namespaced
 
