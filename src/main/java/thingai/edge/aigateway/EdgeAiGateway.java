@@ -24,25 +24,6 @@ public class EdgeAiGateway extends Service {
     @Override
     protected void onServiceInit() {
         ILog.d(TAG, "onServiceInit");
-
-        LlmClient llmClient = new LlmClient("http://100.64.114.29:8080", "no-key", "model");
-        Content content = new Content(null, "Hello, how are you?", 0.7);
-        llmClient.chatCompletionAsync(content, new ResponseStreamCallback() {
-            @Override
-            public void onToken(String token) {
-                ILog.d(TAG, "Received token: " + token);
-            }
-
-            @Override
-            public void onComplete(String fullText) {
-                ILog.d(TAG, "onComplete: " + fullText);
-            }
-
-            @Override
-            public void onError(Exception e) {
-                ILog.d(TAG, "onError: " + e.getMessage());
-            }
-        });
     }
 
     @Override
