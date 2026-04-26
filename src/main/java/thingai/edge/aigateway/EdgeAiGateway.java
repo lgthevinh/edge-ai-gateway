@@ -3,7 +3,7 @@ package thingai.edge.aigateway;
 import org.thingai.base.Service;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.LlmClient;
-import thingai.edge.aigateway.llm.message.Message;
+import thingai.edge.aigateway.llm.content.Content;
 import thingai.edge.aigateway.llm.response.Response;
 
 public class EdgeAiGateway extends Service {
@@ -23,7 +23,8 @@ public class EdgeAiGateway extends Service {
         ILog.d(TAG, "onServiceInit");
 
         LlmClient llmClient = new LlmClient("http://localhost:8080", "no-key", "model");
-        Response response = llmClient.chatCompletion(new Message[0], "Hello, how are you?");
+        Content content = new Content(null, "Hello, how are you?", 0.7);
+        Response response = llmClient.chatCompletion(content);
         ILog.d(TAG, "Response: " + response.getMessageContent());
     }
 
