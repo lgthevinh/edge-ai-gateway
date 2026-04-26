@@ -3,8 +3,11 @@ package thingai.edge.aigateway.llm;
 import com.google.gson.JsonObject;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.content.Content;
-import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
+import thingai.edge.aigateway.llm.message.Message;
+import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.response.Response;
+import thingai.edge.aigateway.llm.response.ResponseChoice;
+import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.net.URI;
@@ -43,17 +46,20 @@ public class LlmClient {
         }
     }
 
-    public CompletableFuture<Void> chatCompletionAsync(Content content, ResponseStreamCallback callback) {
+    public CompletableFuture<Response> chatCompletionAsync(Content content, ResponseStreamCallback callback) {
         ILog.d(TAG, "chatCompletionAsync");
         HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
+        CompletableFuture<Response> promise = new CompletableFuture<>();
 
-        return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
+        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
                 .thenAccept(response -> response.body().forEach(line -> {
                     if (!line.startsWith("data: ")) return;
                     String data = line.substring(6).trim();
                     if (data.equals("[DONE]")) {
-                        callback.onComplete(fullText.toString());
+                        String text = fullText.toString();
+                        callback.onComplete(text);
+                        promise.complete(buildResponse(text));
                         return;
                     }
                     try {
@@ -70,9 +76,13 @@ public class LlmClient {
                     }
                 }))
                 .exceptionally(e -> {
-                    callback.onError(new Exception(e));
+                    Exception ex = new Exception(e);
+                    callback.onError(ex);
+                    promise.completeExceptionally(ex);
                     return null;
                 });
+
+        return promise;
     }
 
     public boolean healthCheck() {
@@ -89,7 +99,7 @@ public class LlmClient {
             ILog.d(TAG, "healthCheck failed: " + e.getMessage());
             return false;
         }
-    }   
+    }
 
     private HttpRequest buildRequest(Content content, boolean stream) {
         Map<String, Object> map = Map.of(
@@ -105,5 +115,10 @@ public class LlmClient {
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(json))
                 .build();
+    }
+
+    private Response buildResponse(String fullText) {
+        ResponseChoice choice = new ResponseChoice(new Message(MessageRole.MODEL, fullText), "stop");
+        return new Response(new ResponseChoice[]{choice}, null);
     }
 }
