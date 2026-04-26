@@ -3,7 +3,6 @@ package thingai.edge.aigateway.llm;
 import com.google.gson.JsonObject;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.content.Content;
-import thingai.edge.aigateway.llm.message.Message;
 import thingai.edge.aigateway.llm.message.MessageStreamCallback;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.utils.JsonUtil;
@@ -34,7 +33,7 @@ public class LlmClient {
 
     public Response chatCompletion(Content content) {
         ILog.d(TAG, "chatCompletion");
-        HttpRequest request = buildRequest(content.getMessages(), false, content.getTemperature());
+        HttpRequest request = buildRequest(content, false);
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             return JsonUtil.fromJson(response.body(), Response.class);
@@ -45,7 +44,7 @@ public class LlmClient {
     }
 
     public CompletableFuture<Void> chatCompletionAsync(Content content, MessageStreamCallback callback) {
-        HttpRequest request = buildRequest(content.getMessages(), true, content.getTemperature());
+        HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
 
         return httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
@@ -89,13 +88,13 @@ public class LlmClient {
             ILog.d(TAG, "healthCheck failed: " + e.getMessage());
             return false;
         }
-    }
+    }   
 
-    private HttpRequest buildRequest(Message[] messages, boolean stream, double temperature) {
+    private HttpRequest buildRequest(Content content, boolean stream) {
         Map<String, Object> map = Map.of(
                 "model", baseModel,
-                "messages", messages,
-                "temperature", temperature,
+                "messages", content.getMessages(),
+                "temperature", content.getTemperature(),
                 "stream", stream
         );
         String json = JsonUtil.toJson(map);
