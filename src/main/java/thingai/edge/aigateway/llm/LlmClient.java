@@ -3,7 +3,7 @@ package thingai.edge.aigateway.llm;
 import com.google.gson.JsonObject;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.content.Content;
-import thingai.edge.aigateway.llm.message.MessageStreamCallback;
+import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.utils.JsonUtil;
 
@@ -43,7 +43,8 @@ public class LlmClient {
         }
     }
 
-    public CompletableFuture<Void> chatCompletionAsync(Content content, MessageStreamCallback callback) {
+    public CompletableFuture<Void> chatCompletionAsync(Content content, ResponseStreamCallback callback) {
+        ILog.d(TAG, "chatCompletionAsync");
         HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
 

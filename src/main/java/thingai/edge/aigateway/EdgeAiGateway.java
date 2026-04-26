@@ -5,6 +5,9 @@ import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.LlmClient;
 import thingai.edge.aigateway.llm.content.Content;
 import thingai.edge.aigateway.llm.response.Response;
+import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
+
+import java.util.concurrent.CompletableFuture;
 
 public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
@@ -22,10 +25,24 @@ public class EdgeAiGateway extends Service {
     protected void onServiceInit() {
         ILog.d(TAG, "onServiceInit");
 
-        LlmClient llmClient = new LlmClient("http://localhost:8080", "no-key", "model");
+        LlmClient llmClient = new LlmClient("http://100.64.114.29:8080", "no-key", "model");
         Content content = new Content(null, "Hello, how are you?", 0.7);
-        Response response = llmClient.chatCompletion(content);
-        ILog.d(TAG, "Response: " + response.getMessageContent());
+        llmClient.chatCompletionAsync(content, new ResponseStreamCallback() {
+            @Override
+            public void onToken(String token) {
+                ILog.d(TAG, "Received token: " + token);
+            }
+
+            @Override
+            public void onComplete(String fullText) {
+                ILog.d(TAG, "onComplete: " + fullText);
+            }
+
+            @Override
+            public void onError(Exception e) {
+                ILog.d(TAG, "onError: " + e.getMessage());
+            }
+        });
     }
 
     @Override
