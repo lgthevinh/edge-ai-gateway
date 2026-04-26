@@ -19,7 +19,7 @@ import java.util.concurrent.CompletableFuture;
 public class LlmClient {
     private static final String TAG = "LlmClient";
 
-    private static final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(300)).build();
+    private static final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
 
     private final String baseUrl;
     private final String apiKey;
