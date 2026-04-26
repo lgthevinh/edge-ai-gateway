@@ -34,8 +34,14 @@ public class LlmClient {
     public Response chatCompletion(Message[] history, String prompt) {
         ILog.d(TAG, "chatCompletion");
         // build messages array
-        Message[] message = new Message[history.length+1];
-        message[history.length] = new Message(MessageRole.USER, prompt);
+        Message[] message;
+        if (history == null) {
+            message = new Message[]{new Message(MessageRole.USER, prompt)};
+        } else {
+            message = new Message[history.length + 1];
+            System.arraycopy(history, 0, message, 0, history.length);
+            message[history.length] = new Message(MessageRole.USER, prompt);
+        }
 
         // build payload
         Map<String, Object> map = Map.of(
