@@ -10,7 +10,7 @@ import thingai.edge.aigateway.session.SessionMessage;
 public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
 
-    private static Dao dao;
+    private Dao dao;
 
     protected EdgeAiGateway() {
         super("edge-ai-gateway");
