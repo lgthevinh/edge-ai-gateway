@@ -1,8 +1,6 @@
 package thingai.edge.aigateway.llm.message;
 
 public class Message {
-    private String conversationId;
-    private int messageId;
     private String role;
     private String content;
 

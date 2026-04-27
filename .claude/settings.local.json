@@ -5,7 +5,11 @@
       "WebSearch",
       "WebFetch(domain:javalin.io)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(javap -classpath /data/projects/edge-ai-gateway/libs/applicationbase.jar org.thingai.base.dao.DaoSqlite)",
+      "Bash(javap -classpath /data/projects/edge-ai-gateway/libs/applicationbase.jar org.thingai.base.dao.DaoTable)",
+      "Bash(javap -classpath /data/projects/edge-ai-gateway/libs/applicationbase.jar org.thingai.base.dao.DaoColumn)",
+      "Bash(jar tf *)"
     ]
   }
 }

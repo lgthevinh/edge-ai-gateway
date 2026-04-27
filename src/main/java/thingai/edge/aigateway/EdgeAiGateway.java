@@ -1,17 +1,16 @@
 package thingai.edge.aigateway;
 
 import org.thingai.base.Service;
+import org.thingai.base.dao.Dao;
 import org.thingai.base.log.ILog;
-import thingai.edge.aigateway.llm.LlmClient;
-import thingai.edge.aigateway.llm.content.Content;
-import thingai.edge.aigateway.llm.response.Response;
-import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
-
-import java.util.concurrent.CompletableFuture;
+import org.thingai.platform.dao.DaoSqlite;
+import thingai.edge.aigateway.session.Session;
+import thingai.edge.aigateway.session.SessionMessage;
 
 public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
 
+    private static Dao dao;
 
     protected EdgeAiGateway() {
         super("edge-ai-gateway");
@@ -24,6 +23,12 @@ public class EdgeAiGateway extends Service {
     @Override
     protected void onServiceInit() {
         ILog.d(TAG, "onServiceInit");
+        // init dao
+        dao = new DaoSqlite(getAppDir() + "/data.db");
+        dao.initDao(new Class[] {
+                Session.class,
+                SessionMessage.class
+        });
     }
 
     @Override
