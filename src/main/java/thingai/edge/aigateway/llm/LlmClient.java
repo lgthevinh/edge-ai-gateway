@@ -57,12 +57,16 @@ public class LlmClient {
                 .thenAccept(response -> response.body().forEach(line -> {
                     if (!line.startsWith("data: ")) return;
                     String data = line.substring(6).trim();
+
                     if (data.equals("[DONE]")) {
                         String text = fullText.toString();
                         callback.onComplete(text);
                         promise.complete(buildResponse(text));
                         return;
                     }
+
+
+                    // extract token from payload
                     try {
                         JsonObject obj = JsonUtil.fromJson(data, JsonObject.class);
                         var delta = obj.getAsJsonArray("choices")
@@ -73,7 +77,8 @@ public class LlmClient {
                             fullText.append(token);
                             callback.onToken(token);
                         }
-                    } catch (Exception ignored) {
+                    } catch (Exception e) {
+                        ILog.d(TAG, "chatCompletionAsync: " + e.getMessage());
                     }
                 }))
                 .exceptionally(e -> {
@@ -103,6 +108,7 @@ public class LlmClient {
     }
 
     private HttpRequest buildRequest(Content content, boolean stream) {
+        // build payload from content
         Map<String, Object> map = new HashMap<>();
         map.put("model", baseModel);
         map.put("messages", content.getMessages());
@@ -112,6 +118,8 @@ public class LlmClient {
             map.put("tools", content.getTools());
             map.put("tool_choice", content.getToolChoice());
         }
+
+        // jsonify map
         String json = JsonUtil.toJson(map);
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v1/chat/completions"))
