@@ -11,6 +11,7 @@ public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
 
     private Dao dao;
+    private String llamaServerUrl;
 
     protected EdgeAiGateway() {
         super("edge-ai-gateway");
@@ -29,6 +30,14 @@ public class EdgeAiGateway extends Service {
                 Session.class,
                 SessionMessage.class
         });
+    }
+
+    public void setLlamaServerUrl(String llamaServerUrl) {
+        this.llamaServerUrl = llamaServerUrl;
+    }
+
+    public String getLlamaServerUrl() {
+        return llamaServerUrl;
     }
 
     @Override

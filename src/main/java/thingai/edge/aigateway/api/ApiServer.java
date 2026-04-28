@@ -15,20 +15,22 @@ public class ApiServer {
 
     private Javalin app;
     private final int port;
+    private final String llamaServerUrl;
 
-    public ApiServer() {
-        this(DEFAULT_PORT);
+    public ApiServer(String llamaServerUrl) {
+        this(DEFAULT_PORT, llamaServerUrl);
     }
 
-    public ApiServer(int port) {
+    public ApiServer(int port, String llamaServerUrl) {
         this.port = port;
+        this.llamaServerUrl = llamaServerUrl;
     }
 
     public void start() {
         app = Javalin.create(config -> {
             config.routes.apiBuilder(() -> path("api", () -> {
                 new RouteRoot().addEndpoints();
-                new RouteChat().addEndpoints();
+                new RouteChat(llamaServerUrl).addEndpoints();
             }));
         }).start(port);
     }
