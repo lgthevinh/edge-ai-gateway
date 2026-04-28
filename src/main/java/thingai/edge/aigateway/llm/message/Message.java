@@ -1,8 +1,16 @@
 package thingai.edge.aigateway.llm.message;
 
+import com.google.gson.annotations.SerializedName;
+
 public class Message {
     private String role;
     private String content;
+
+    @SerializedName("tool_calls")
+    private ToolCall[] toolCalls;
+
+    @SerializedName("tool_call_id")
+    private String toolCallId;
 
     public Message() {
 
@@ -27,5 +35,21 @@ public class Message {
 
     public void setContent(String content) {
         this.content = content;
+    }
+
+    public ToolCall[] getToolCalls() {
+        return toolCalls;
+    }
+
+    public void setToolCalls(ToolCall[] toolCalls) {
+        this.toolCalls = toolCalls;
+    }
+
+    public String getToolCallId() {
+        return toolCallId;
+    }
+
+    public void setToolCallId(String toolCallId) {
+        this.toolCallId = toolCallId;
     }
 }

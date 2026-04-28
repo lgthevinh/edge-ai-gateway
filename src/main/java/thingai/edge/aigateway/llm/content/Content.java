@@ -6,6 +6,8 @@ import thingai.edge.aigateway.llm.message.MessageRole;
 public class Content {
     private Message[] messages;
     private double temperature;
+    private Tool[] tools;
+    private String toolChoice;
 
     public Content() {
     }
@@ -36,5 +38,24 @@ public class Content {
 
     public void setTemperature(double temperature) {
         this.temperature = temperature;
+    }
+
+    public Tool[] getTools() {
+        return tools;
+    }
+
+    public void setTools(Tool[] tools) {
+        this.tools = tools;
+        if (tools != null && this.toolChoice == null) {
+            this.toolChoice = "auto";
+        }
+    }
+
+    public String getToolChoice() {
+        return toolChoice;
+    }
+
+    public void setToolChoice(String toolChoice) {
+        this.toolChoice = toolChoice;
     }
 }

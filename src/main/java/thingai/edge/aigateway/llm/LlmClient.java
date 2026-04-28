@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -102,12 +103,15 @@ public class LlmClient {
     }
 
     private HttpRequest buildRequest(Content content, boolean stream) {
-        Map<String, Object> map = Map.of(
-                "model", baseModel,
-                "messages", content.getMessages(),
-                "temperature", content.getTemperature(),
-                "stream", stream
-        );
+        Map<String, Object> map = new HashMap<>();
+        map.put("model", baseModel);
+        map.put("messages", content.getMessages());
+        map.put("temperature", content.getTemperature());
+        map.put("stream", stream);
+        if (content.getTools() != null && content.getTools().length > 0) {
+            map.put("tools", content.getTools());
+            map.put("tool_choice", content.getToolChoice());
+        }
         String json = JsonUtil.toJson(map);
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v1/chat/completions"))
