@@ -144,7 +144,7 @@ public interface ResponseStreamCallback {
 - Fields: `name`, `systemInstruction`, `model`, `String[] toolKit`, `int[] samplingParams` (temperature, top_p, top_k — length-3 validated)
 - `AgentRegistry` — placeholder, not yet implemented
 
-### `McpRegistry` (`thingai.edge.aigateway.mcp`)
+### `McpRegistry` (`thingai.edge.aigateway.agent.mcp`)
 - Placeholder, not yet implemented
 
 ### `JsonUtil` (`thingai.edge.aigateway.utils`)

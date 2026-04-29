@@ -19,22 +19,23 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
+public class LlamaCppProvider extends LlmProvider {
+    private static final String TAG = "LlamaCppProvider";
 
-public class LlmClient {
-    private static final String TAG = "LlmClient";
+    private static final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(30))
+            .build();
 
-    private static final HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(30)).build();
-
-    private final String baseUrl;
     private final String apiKey;
     private final String baseModel;
 
-    public LlmClient(String baseUrl, String apiKey, String baseModel) {
-        this.baseUrl = baseUrl;
+    public LlamaCppProvider(String baseUrl, String apiKey, String baseModel) {
+        super(baseUrl);
         this.apiKey = apiKey;
         this.baseModel = baseModel;
     }
 
+    @Override
     public Response chatCompletion(Content content) {
         ILog.d(TAG, "chatCompletion");
         HttpRequest request = buildRequest(content, false);
@@ -47,6 +48,7 @@ public class LlmClient {
         }
     }
 
+    @Override
     public CompletableFuture<Response> chatCompletionAsync(Content content, ResponseStreamCallback callback) {
         ILog.d(TAG, "chatCompletionAsync");
         HttpRequest request = buildRequest(content, true);
@@ -65,8 +67,6 @@ public class LlmClient {
                         return;
                     }
 
-
-                    // extract token from payload
                     try {
                         JsonObject obj = JsonUtil.fromJson(data, JsonObject.class);
                         var delta = obj.getAsJsonArray("choices")
@@ -91,6 +91,7 @@ public class LlmClient {
         return promise;
     }
 
+    @Override
     public boolean healthCheck() {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/health"))
@@ -108,7 +109,6 @@ public class LlmClient {
     }
 
     private HttpRequest buildRequest(Content content, boolean stream) {
-        // build payload from content
         Map<String, Object> map = new HashMap<>();
         map.put("model", baseModel);
         map.put("messages", content.getMessages());
@@ -118,8 +118,6 @@ public class LlmClient {
             map.put("tools", content.getTools());
             map.put("tool_choice", content.getToolChoice());
         }
-
-        // jsonify map
         String json = JsonUtil.toJson(map);
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/v1/chat/completions"))

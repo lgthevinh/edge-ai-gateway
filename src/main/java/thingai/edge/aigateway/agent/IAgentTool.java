@@ -5,7 +5,7 @@ import thingai.edge.aigateway.llm.content.Tool;
 import thingai.edge.aigateway.llm.content.ToolFunction;
 import thingai.edge.aigateway.utils.JsonUtil;
 
-public interface AgentTool {
+public interface IAgentTool {
     String getName();
     String getDescription();
     String getParametersJson();
