@@ -38,7 +38,6 @@ edge-ai-gateway/
     ├── agent/
     │   ├── IAgent.java             # preset agent interface
     │   ├── IAgentTool.java         # tool definition + execution interface
-    │   ├── AgentRegistry.java      # stub
     │   ├── mcp/McpRegistry.java    # stub
     │   └── preset/AssistantAgent.java  # stub
     ├── api/
@@ -141,7 +140,6 @@ LLAMA_SERVER_URL=http://localhost:8080
 
 ## Not Yet Implemented
 - `AgentRunner` — agentic loop (load history → build Content → call LlmProvider → handle tool calls → persist)
-- `AgentRegistry` — register/lookup preset agents
 - `agent/mcp/McpRegistry` — MCP client
 - `agent/preset/AssistantAgent` — example preset
 - Session memory / context management

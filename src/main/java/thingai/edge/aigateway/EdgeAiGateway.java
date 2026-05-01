@@ -32,6 +32,10 @@ public class EdgeAiGateway extends Service {
         });
     }
 
+    public Dao getDao() {
+        return dao;
+    }
+
     public void setLlamaServerUrl(String llamaServerUrl) {
         this.llamaServerUrl = llamaServerUrl;
     }

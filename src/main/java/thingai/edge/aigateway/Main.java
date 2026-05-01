@@ -1,6 +1,8 @@
 package thingai.edge.aigateway;
 
+import thingai.edge.aigateway.agent.preset.AssistantAgent;
 import thingai.edge.aigateway.api.ApiServer;
+import thingai.edge.aigateway.llm.LlamaCppProvider;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -12,12 +14,17 @@ public class Main {
     public static void main(String[] args) {
         Map<String, String> env = loadEnv(".env");
         String llamaServerUrl = env.getOrDefault("LLAMA_SERVER_URL", "http://localhost:8080");
+        String apiKey = env.getOrDefault("API_KEY", "");
+        String model = env.getOrDefault("LLM_MODEL", "gemma-4-e2b");
 
         EdgeAiGateway service = new EdgeAiGateway();
         service.setLlamaServerUrl(llamaServerUrl);
         service.init();
 
-        ApiServer apiServer = new ApiServer(llamaServerUrl);
+        LlamaCppProvider provider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
+        AssistantAgent agent = new AssistantAgent(provider);
+
+        ApiServer apiServer = new ApiServer(llamaServerUrl, agent, service.getDao());
         apiServer.start();
     }
 
