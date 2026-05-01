@@ -36,6 +36,28 @@ public class AgentRunner {
         return result;
     }
 
+    public void runStream(String sessionId, String userInput, ResponseStreamCallback callback) {
+        Content content = buildContent(sessionId, userInput);
+        agent.getLlmProvider().chatCompletionAsync(content, new ResponseStreamCallback() {
+            @Override
+            public void onToken(String token) {
+                callback.onToken(token);
+            }
+
+            @Override
+            public void onComplete(String fullText) {
+                Response response = buildStopResponse(fullText);
+                persistMessages(sessionId, userInput, content, response);
+                callback.onComplete(fullText);
+            }
+
+            @Override
+            public void onError(Exception e) {
+                callback.onError(e);
+            }
+        }).join();
+    }
+
     public CompletableFuture<String> runAsync(String sessionId, String userInput, ResponseStreamCallback callback) {
         Content content = buildContent(sessionId, userInput);
         CompletableFuture<String> result = new CompletableFuture<>();
@@ -185,7 +207,7 @@ public class AgentRunner {
         return messages;
     }
 
-    private IAgentTool findTool(String name) {
+    private IAgentTool  findTool(String name) {
         IAgentTool[] tools = agent.getTools();
         if (tools == null) return null;
         for (IAgentTool tool : tools) {

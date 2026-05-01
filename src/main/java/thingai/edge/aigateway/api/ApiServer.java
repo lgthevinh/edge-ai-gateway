@@ -32,13 +32,15 @@ public class ApiServer {
     }
 
     public void start() {
+        RouteAgent routeAgent = new RouteAgent(agent, dao);
         app = Javalin.create(config -> {
             config.staticFiles.add("/public", Location.CLASSPATH);
             config.routes.apiBuilder(() -> path("api", () -> {
                 new RouteRoot().addEndpoints();
                 new RouteChat(llamaServerUrl).addEndpoints();
-                new RouteAgent(agent, dao).addEndpoints();
+                routeAgent.addEndpoints();
             }));
+            config.routes.sse("/api/agent/chat/stream", routeAgent.sseHandler());
         }).start(port);
     }
 
