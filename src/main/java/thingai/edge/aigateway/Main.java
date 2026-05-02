@@ -1,6 +1,9 @@
 package thingai.edge.aigateway;
 
+import thingai.edge.aigateway.agent.Agent;
+import thingai.edge.aigateway.agent.AgentOrchestrator;
 import thingai.edge.aigateway.agent.preset.AssistantAgent;
+import thingai.edge.aigateway.agent.preset.ResearchAgent;
 import thingai.edge.aigateway.api.ApiServer;
 import thingai.edge.aigateway.llm.LlamaCppProvider;
 
@@ -22,9 +25,11 @@ public class Main {
         service.init();
 
         LlamaCppProvider provider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
-        AssistantAgent agent = new AssistantAgent(provider);
+        Agent assistant = AssistantAgent.create(provider);
+        Agent researcher = ResearchAgent.create(provider);
+        AgentOrchestrator orchestrator = new AgentOrchestrator(service.getDao(), researcher, assistant);
 
-        ApiServer apiServer = new ApiServer(llamaServerUrl, agent, service.getDao());
+        ApiServer apiServer = new ApiServer(llamaServerUrl, orchestrator);
         apiServer.start();
     }
 

@@ -2,8 +2,7 @@ package thingai.edge.aigateway.api;
 
 import io.javalin.Javalin;
 import io.javalin.http.staticfiles.Location;
-import org.thingai.base.dao.Dao;
-import thingai.edge.aigateway.agent.IAgent;
+import thingai.edge.aigateway.agent.AgentOrchestrator;
 import thingai.edge.aigateway.api.routes.RouteAgent;
 import thingai.edge.aigateway.api.routes.RouteChat;
 import thingai.edge.aigateway.api.routes.RouteRoot;
@@ -17,22 +16,20 @@ public class ApiServer {
     private Javalin app;
     private final int port;
     private final String llamaServerUrl;
-    private final IAgent agent;
-    private final Dao dao;
+    private final AgentOrchestrator orchestrator;
 
-    public ApiServer(String llamaServerUrl, IAgent agent, Dao dao) {
-        this(DEFAULT_PORT, llamaServerUrl, agent, dao);
+    public ApiServer(String llamaServerUrl, AgentOrchestrator orchestrator) {
+        this(DEFAULT_PORT, llamaServerUrl, orchestrator);
     }
 
-    public ApiServer(int port, String llamaServerUrl, IAgent agent, Dao dao) {
+    public ApiServer(int port, String llamaServerUrl, AgentOrchestrator orchestrator) {
         this.port = port;
         this.llamaServerUrl = llamaServerUrl;
-        this.agent = agent;
-        this.dao = dao;
+        this.orchestrator = orchestrator;
     }
 
     public void start() {
-        RouteAgent routeAgent = new RouteAgent(agent, dao);
+        RouteAgent routeAgent = new RouteAgent(orchestrator);
         app = Javalin.create(config -> {
             config.staticFiles.add("/public", Location.CLASSPATH);
             config.routes.apiBuilder(() -> path("api", () -> {

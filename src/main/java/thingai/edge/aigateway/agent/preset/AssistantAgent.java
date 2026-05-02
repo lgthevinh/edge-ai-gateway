@@ -1,38 +1,16 @@
 package thingai.edge.aigateway.agent.preset;
 
-import thingai.edge.aigateway.agent.IAgent;
-import thingai.edge.aigateway.agent.IAgentTool;
+import thingai.edge.aigateway.agent.Agent;
 import thingai.edge.aigateway.llm.LlmProvider;
 
-public class AssistantAgent implements IAgent {
-    private final LlmProvider llmProvider;
+public class AssistantAgent {
 
-    public AssistantAgent(LlmProvider llmProvider) {
-        this.llmProvider = llmProvider;
-    }
-
-    @Override
-    public String getName() {
-        return "Assistant";
-    }
-
-    @Override
-    public String getSystemInstruction() {
-        return "You are a helpful assistant.";
-    }
-
-    @Override
-    public LlmProvider getLlmProvider() {
-        return llmProvider;
-    }
-
-    @Override
-    public IAgentTool[] getTools() {
-        return null;
-    }
-
-    @Override
-    public double getTemperature() {
-        return 0.7;
+    public static Agent create(LlmProvider llmProvider) {
+        return new Agent.Builder()
+                .name("Assistant")
+                .systemInstruction("You are a helpful assistant.")
+                .llmProvider(llmProvider)
+                .temperature(0.7)
+                .build();
     }
 }
