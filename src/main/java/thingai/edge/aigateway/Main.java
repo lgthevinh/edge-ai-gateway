@@ -27,7 +27,11 @@ public class Main {
         LlamaCppProvider provider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
         Agent assistant = AssistantAgent.create(provider);
         Agent researcher = ResearchAgent.create(provider);
-        AgentOrchestrator orchestrator = new AgentOrchestrator(service.getDao(), researcher, assistant);
+        AgentOrchestrator orchestrator = new AgentOrchestrator(service.getDao(), new Agent[]{
+                assistant,
+                researcher,
+                assistant
+        });
 
         ApiServer apiServer = new ApiServer(llamaServerUrl, orchestrator);
         apiServer.start();

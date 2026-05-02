@@ -4,8 +4,8 @@ import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.sse.SseClient;
 import org.thingai.base.log.ILog;
+import thingai.edge.aigateway.agent.AgentChainCallback;
 import thingai.edge.aigateway.agent.AgentOrchestrator;
-import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.util.concurrent.CountDownLatch;
@@ -59,13 +59,16 @@ public class RouteAgent implements EndpointGroup {
             CountDownLatch done = new CountDownLatch(1);
             client.onClose(done::countDown);
 
-            orchestrator.runAsync(sessionId, message, new ResponseStreamCallback() {
+            orchestrator.runAsync(sessionId, message, new AgentChainCallback() {
                 @Override
-                public void onToken(String token) {
+                public void onAgentComplete(int index, String agentName, String content, String display) {
                     if (!client.terminated()) {
-                        JsonObject chunk = new JsonObject();
-                        chunk.addProperty("token", token);
-                        client.sendEvent("token", JsonUtil.toJson(chunk));
+                        JsonObject event = new JsonObject();
+                        event.addProperty("index", index);
+                        event.addProperty("name", agentName);
+                        event.addProperty("content", content);
+                        event.addProperty("display", display);
+                        client.sendEvent("agent", JsonUtil.toJson(event));
                     }
                 }
 

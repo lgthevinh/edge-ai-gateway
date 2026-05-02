@@ -32,21 +32,57 @@ function appendUserMessage(text) {
     scrollToBottom();
 }
 
-function appendModelMessage() {
+function appendAgentMessage(name, index, pending) {
     const chatBox = document.getElementById('chat-box');
     const msg = document.createElement('div');
-    msg.className = 'msg model streaming-bubble';
-    msg.innerHTML = '<div class="msg-label">Assistant</div><div class="msg-bubble"></div>';
+    msg.className = `msg model agent-turn ${agentStageClass(index, name)}` + (pending ? ' streaming-bubble' : '');
+    msg.innerHTML = `
+        <div class="msg-label">
+            <span class="agent-avatar">${agentInitial(name)}</span>
+            <span class="agent-meta">
+                <span class="agent-name">${escapeHtml(name)}</span>
+                <span class="agent-stage">${escapeHtml(agentStageLabel(index, name))}</span>
+            </span>
+        </div>
+        <div class="msg-bubble markdown"></div>`;
     chatBox.appendChild(msg);
     scrollToBottom();
-    return msg.querySelector('.msg-bubble');
+    return msg;
 }
 
-function finalizeModelMessage(bubble, fullText) {
-    bubble.parentElement.classList.remove('streaming-bubble');
-    bubble.classList.add('markdown');
-    bubble.innerHTML = marked.parse(fullText);
+function updateAgentMessage(msg, name, index, display) {
+    msg.classList.remove('streaming-bubble');
+    msg.classList.remove('agent-planning', 'agent-research', 'agent-answer');
+    msg.classList.add(agentStageClass(index, name));
+    msg.querySelector('.agent-avatar').textContent = agentInitial(name);
+    msg.querySelector('.agent-name').textContent = name;
+    msg.querySelector('.agent-stage').textContent = agentStageLabel(index, name);
+    const bubble = msg.querySelector('.msg-bubble');
+    bubble.innerHTML = marked.parse(display || '');
     scrollToBottom();
+    return bubble;
+}
+
+function finalizeAgentMessage(msg, fullText) {
+    msg.classList.remove('streaming-bubble');
+    msg.querySelector('.msg-bubble').innerHTML = marked.parse(fullText || '');
+    scrollToBottom();
+}
+
+function agentInitial(name) {
+    return (name || 'A').trim().charAt(0).toUpperCase();
+}
+
+function agentStageLabel(index, name) {
+    if (index === 0) return 'Planning';
+    if ((name || '').toLowerCase().includes('research')) return 'Research';
+    return 'Final answer';
+}
+
+function agentStageClass(index, name) {
+    if (index === 0) return 'agent-planning';
+    if ((name || '').toLowerCase().includes('research')) return 'agent-research';
+    return 'agent-answer';
 }
 
 function scrollToBottom() {
@@ -70,26 +106,35 @@ function sendMessage() {
     setStatus('streaming');
 
     appendUserMessage(text);
-    const bubble = appendModelMessage();
+    const pendingMessage = appendAgentMessage('Assistant', 0, true);
     let fullText = '';
+    let finalMessage = pendingMessage;
+    let agentEventCount = 0;
 
     const params = encodeURIComponent(JSON.stringify({session_id: sessionId, message: text}));
     const es = new EventSource('/api/agent/chat/stream?body=' + params);
 
-    es.addEventListener('token', e => {
+    es.addEventListener('agent', e => {
         try {
             const obj = JSON.parse(e.data);
-            if (obj.token) {
-                fullText += obj.token;
-                bubble.textContent = fullText;
-                scrollToBottom();
+            const display = obj.display ?? obj.content;
+            if (display !== undefined && display !== null) {
+                const agentName = obj.name || `Agent ${obj.index + 1}`;
+                if (agentEventCount === 0) {
+                    finalMessage = pendingMessage;
+                } else {
+                    finalMessage = appendAgentMessage(agentName, obj.index, false);
+                }
+                agentEventCount++;
+                fullText = display;
+                updateAgentMessage(finalMessage, agentName, obj.index, fullText);
             }
         } catch (_) {}
     });
 
     es.addEventListener('done', () => {
         es.close();
-        finalizeModelMessage(bubble, fullText);
+        finalizeAgentMessage(finalMessage, fullText);
         setStatus('idle');
         setInputEnabled(true);
         document.getElementById('input').focus();
@@ -97,8 +142,8 @@ function sendMessage() {
 
     es.addEventListener('error', e => {
         es.close();
-        if (!fullText) bubble.textContent = '[Connection error]';
-        bubble.parentElement.classList.remove('streaming-bubble');
+        if (!fullText) updateAgentMessage(pendingMessage, 'Assistant', 0, '[Connection error]');
+        pendingMessage.classList.remove('streaming-bubble');
         setStatus('idle');
         setInputEnabled(true);
     });
