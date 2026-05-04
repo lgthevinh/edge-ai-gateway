@@ -30,17 +30,20 @@ public class ListFilesTool implements IAgentTool {
             error.addProperty("error", "Not a directory: " + path);
             return JsonUtil.toJson(error);
         }
-        String[] entries = dir.list();
+        File[] entries = dir.listFiles();
         if (entries == null) {
             JsonObject error = new JsonObject();
             error.addProperty("error", "Cannot list directory: " + path);
             return JsonUtil.toJson(error);
         }
         JsonArray files = new JsonArray();
-        for (String entry : entries) {
+        for (File entry : entries) {
             JsonObject item = new JsonObject();
-            item.addProperty("name", entry);
-            item.addProperty("is_directory", new File(dir, entry).isDirectory());
+            item.addProperty("name", entry.getName());
+            item.addProperty("is_directory", entry.isDirectory());
+            if (!entry.isDirectory()) {
+                item.addProperty("size_bytes", entry.length());
+            }
             files.add(item);
         }
         JsonObject result = new JsonObject();

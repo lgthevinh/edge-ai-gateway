@@ -130,6 +130,11 @@ class AgentOrchestratorTest {
         private String finalText;
 
         @Override
+        public void onToken(String token) {
+
+        }
+
+        @Override
         public void onAgentComplete(int index, String agentName, String content, String display) {
             agentDisplays.add(index + ":" + agentName + ":" + display);
         }

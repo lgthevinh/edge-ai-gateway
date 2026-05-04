@@ -61,12 +61,33 @@ public class RouteAgent implements EndpointGroup {
 
             orchestrator.runAsync(sessionId, message, new AgentChainCallback() {
                 @Override
+                public void onTurn(int turn, String agentName, String[] toolsUsed) {
+                    if (!client.terminated()) {
+                        JsonObject event = new JsonObject();
+                        event.addProperty("turn", turn);
+                        event.addProperty("agent", agentName);
+                        com.google.gson.JsonArray tools = new com.google.gson.JsonArray();
+                        for (String t : toolsUsed) tools.add(t);
+                        event.add("tools", tools);
+                        client.sendEvent("turn", JsonUtil.toJson(event));
+                    }
+                }
+
+                @Override
+                public void onToken(String token) {
+                    if (!client.terminated()) {
+                        JsonObject event = new JsonObject();
+                        event.addProperty("token", token);
+                        client.sendEvent("token", JsonUtil.toJson(event));
+                    }
+                }
+
+                @Override
                 public void onAgentComplete(int index, String agentName, String content, String display) {
                     if (!client.terminated()) {
                         JsonObject event = new JsonObject();
                         event.addProperty("index", index);
                         event.addProperty("name", agentName);
-                        event.addProperty("content", content);
                         event.addProperty("display", display);
                         client.sendEvent("agent", JsonUtil.toJson(event));
                     }

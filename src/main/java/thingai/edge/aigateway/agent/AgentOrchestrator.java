@@ -1,9 +1,12 @@
 package thingai.edge.aigateway.agent;
 
 import org.thingai.base.dao.Dao;
+import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.message.Message;
 import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.message.ToolCall;
+import thingai.edge.aigateway.llm.response.Response;
+import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
 import thingai.edge.aigateway.session.SessionMessage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
@@ -13,31 +16,65 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 
+/**
+ * Drives the agent turn loop: calls the agent repeatedly until it signals done
+ * (finish_reason == "stop") or the safety cap (maxTurns) is reached.
+ *
+ * <p>Responsibilities:
+ * <ul>
+ *   <li>Session history load + persist</li>
+ *   <li>Turn loop with maxTurns safety cap</li>
+ *   <li>Tool execution between turns</li>
+ *   <li>Callback notifications (onTurn, onToken, onComplete, onError)</li>
+ * </ul>
+ *
+ * <p>The {@link Agent} itself is a thin single-LLM-call unit; it does not loop.
+ */
 public class AgentOrchestrator {
+    private static final String TAG = "AgentOrchestrator";
+    private static final int DEFAULT_MAX_TURNS = 10;
+
     private final Agent[] agents;
     private final Dao dao;
+    private final int maxTurns;
 
     public AgentOrchestrator(Dao dao, Agent... agents) {
+        this(dao, DEFAULT_MAX_TURNS, agents);
+    }
+
+    public AgentOrchestrator(Dao dao, int maxTurns, Agent... agents) {
         this.dao = Objects.requireNonNull(dao, "dao must not be null");
-        if (agents == null || agents.length == 0) {
-            throw new IllegalArgumentException("agents must not be empty");
-        }
-        for (Agent agent : agents) {
-            Objects.requireNonNull(agent, "agents must not contain null");
-        }
+        if (agents == null || agents.length == 0) throw new IllegalArgumentException("agents must not be empty");
+        for (Agent agent : agents) Objects.requireNonNull(agent, "agents must not contain null");
         this.agents = Arrays.copyOf(agents, agents.length);
+        this.maxTurns = maxTurns;
     }
 
+    // -------------------------------------------------------------------------
+    // Public API
+    // -------------------------------------------------------------------------
+
+    /** Blocking — runs the full turn loop and returns the final text. */
     public String run(String sessionId, String userInput) {
-        return runChain(sessionId, userInput, null);
+        SessionMessage[] historyRows = loadHistoryRows(sessionId);
+        Message[] history = toMessages(historyRows);
+        String finalText = runChain(sessionId, userInput, history, historyRows.length, null);
+        return finalText;
     }
 
+    /**
+     * Async — runs intermediate turns blocking, streams the final answer token-by-token.
+     * Returns a future that completes with the full final text.
+     */
     public CompletableFuture<String> runAsync(String sessionId, String userInput, AgentChainCallback callback) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                String finalText = runChain(sessionId, userInput, callback);
-                if (callback != null) callback.onComplete(finalText);
+                SessionMessage[] historyRows = loadHistoryRows(sessionId);
+                Message[] history = toMessages(historyRows);
+                String finalText = runChain(sessionId, userInput, history, historyRows.length, callback);
                 return finalText;
+            } catch (CompletionException e) {
+                throw e;
             } catch (Exception e) {
                 if (callback != null) callback.onError(e);
                 throw new CompletionException(e);
@@ -45,60 +82,190 @@ public class AgentOrchestrator {
         });
     }
 
-    private String runChain(String sessionId, String userInput, AgentChainCallback callback) {
-        Message[] history = loadHistory(sessionId);
+    // -------------------------------------------------------------------------
+    // Chain: one turn loop per agent (single-agent = one loop)
+    // -------------------------------------------------------------------------
+
+    private String runChain(String sessionId, String userInput, Message[] history,
+                            int historyLength, AgentChainCallback callback) {
+        // Single-agent shortcut — most common case
+        if (agents.length == 1) {
+            Message[] messages = agents[0].buildMessages(history, userInput);
+            String finalText = runTurnLoop(agents[0], messages, callback);
+            if (finalText != null) persistMessages(sessionId, userInput, finalText, historyLength);
+            if (callback != null) callback.onComplete(finalText);
+            return finalText;
+        }
+
+        // Multi-agent chain: each agent runs its own turn loop; output feeds into next agent
         Message[] context = history;
         String finalText = null;
 
         for (int i = 0; i < agents.length; i++) {
-            finalText = agents[i].run(context, userInput);
-            if (finalText == null) return null;
+            Agent agent = agents[i];
+            Message[] messages = agent.buildMessages(context, userInput);
+            String agentOutput = runTurnLoopBlocking(agent, messages);
+            if (agentOutput == null) {
+                Exception e = new Exception("Agent " + agentName(i) + " returned null");
+                if (callback != null) callback.onError(e);
+                throw new CompletionException(e);
+            }
+            finalText = agentOutput;
 
-            String agentName = agentName(i);
-            if (callback != null) callback.onAgentComplete(i, agentName, finalText, extractUserDisplay(finalText));
-            context = appendMessage(context, MessageRole.MODEL, "Output from " + agentName + ":\n" + finalText);
+            boolean isLast = (i == agents.length - 1);
+            if (callback != null) {
+                callback.onAgentComplete(i, agentName(i), agentOutput, agentOutput);
+            }
+            if (!isLast) {
+                context = appendMessage(context, MessageRole.MODEL,
+                        "Output from " + agentName(i) + ":\n" + agentOutput);
+            }
         }
 
-        persistMessages(sessionId, userInput, finalText);
+        persistMessages(sessionId, userInput, finalText, historyLength);
+        if (callback != null) callback.onComplete(finalText);
         return finalText;
     }
 
-    // --- persistence ---
+    // -------------------------------------------------------------------------
+    // Turn loop
+    // -------------------------------------------------------------------------
 
-    private Message[] loadHistory(String sessionId) {
+    /**
+     * Runs the turn loop for a single agent. Tool-using turns are blocking.
+     * The final answer turn streams tokens through the callback (if provided).
+     */
+    private String runTurnLoop(Agent agent, Message[] messages, AgentChainCallback callback) {
+        int turn = 0;
+        Message[] current = messages;
+
+        while (turn < maxTurns) {
+            Response response = agent.call(current);
+
+            if (response == null) {
+                Exception e = new Exception("LLM returned null on turn " + turn);
+                if (callback != null) callback.onError(e);
+                throw new CompletionException(e);
+            }
+
+            if (isToolCall(response)) {
+                // Agent decided to use tools — execute and loop
+                String[] toolsUsed = extractToolNames(response);
+                ILog.d(TAG, "[" + agent.getName() + "] turn " + turn + " — tools: " + Arrays.toString(toolsUsed));
+                if (callback != null) callback.onTurn(turn, agent.getName(), toolsUsed);
+
+                current = applyToolResults(agent, response, current);
+                turn++;
+                continue;
+            }
+
+            // Agent decided to stop — deliver final answer
+            if (callback != null) {
+                // Stream the final answer for a better UX
+                Message[] finalMessages = current;
+                try {
+                    return agent.callStream(finalMessages, new ResponseStreamCallback() {
+                        @Override public void onToken(String token) { callback.onToken(token); }
+                        @Override public void onComplete(String fullText) { /* handled by future */ }
+                        @Override public void onError(Exception e) { callback.onError(e); }
+                    }).join();
+                } catch (Exception e) {
+                    // Fallback: deliver blocking result
+                    ILog.d(TAG, "Streaming fallback to blocking: " + e.getMessage());
+                    return response.getMessageContent();
+                }
+            } else {
+                return response.getMessageContent();
+            }
+        }
+
+        // Safety cap reached
+        ILog.d(TAG, "[" + agent.getName() + "] maxTurns (" + maxTurns + ") reached — returning last response");
+        Response last = agent.call(current);
+        return last != null ? last.getMessageContent() : null;
+    }
+
+    /** Blocking-only variant used for intermediate agents in a multi-agent chain. */
+    private String runTurnLoopBlocking(Agent agent, Message[] messages) {
+        int turn = 0;
+        Message[] current = messages;
+
+        while (turn < maxTurns) {
+            Response response = agent.call(current);
+            if (response == null) return null;
+
+            if (isToolCall(response)) {
+                current = applyToolResults(agent, response, current);
+                turn++;
+            } else {
+                return response.getMessageContent();
+            }
+        }
+
+        ILog.d(TAG, "[" + agent.getName() + "] maxTurns (" + maxTurns + ") reached");
+        Response last = agent.call(current);
+        return last != null ? last.getMessageContent() : null;
+    }
+
+    // -------------------------------------------------------------------------
+    // Tool execution
+    // -------------------------------------------------------------------------
+
+    /**
+     * Executes all tool calls from the response and returns an updated message array
+     * with the assistant message + tool result messages appended.
+     */
+    private Message[] applyToolResults(Agent agent, Response response, Message[] current) {
+        Message assistantMsg = response.getChoices()[0].getMessage();
+        ToolCall[] toolCalls = assistantMsg.getToolCalls();
+        if (toolCalls == null) return current;
+
+        Message[] toolResults = new Message[toolCalls.length];
+        for (int i = 0; i < toolCalls.length; i++) {
+            ToolCall tc = toolCalls[i];
+            String result = agent.executeTool(tc);
+            Message toolMsg = new Message(MessageRole.TOOL, result);
+            toolMsg.setToolCallId(tc.getId());
+            toolResults[i] = toolMsg;
+        }
+
+        Message[] updated = new Message[current.length + 1 + toolResults.length];
+        System.arraycopy(current, 0, updated, 0, current.length);
+        updated[current.length] = assistantMsg;
+        System.arraycopy(toolResults, 0, updated, current.length + 1, toolResults.length);
+        return updated;
+    }
+
+    // -------------------------------------------------------------------------
+    // Persistence
+    // -------------------------------------------------------------------------
+
+    private SessionMessage[] loadHistoryRows(String sessionId) {
         SessionMessage[] rows = dao.query(SessionMessage.class, "session_id = ?", sessionId);
         if (rows != null) {
-            Arrays.sort(rows, (left, right) -> Integer.compare(left.sequence, right.sequence));
+            Arrays.sort(rows, (a, b) -> Integer.compare(a.sequence, b.sequence));
         }
-        return toMessages(rows);
+        return rows != null ? rows : new SessionMessage[0];
     }
 
-    private void persistMessages(String sessionId, String userInput, String reply) {
-        int sequence = nextSequence(sessionId);
+    private void persistMessages(String sessionId, String userInput, String reply, int historyLength) {
+        int sequence = historyLength;
         long now = System.currentTimeMillis();
 
-        SessionMessage userMsg = new SessionMessage(
+        dao.insertOrUpdate(new SessionMessage(
                 UUID.randomUUID().toString(), sessionId, sequence++,
-                MessageRole.USER, userInput, null, null, now);
-        dao.insertOrUpdate(userMsg);
+                MessageRole.USER, userInput, null, null, now));
 
         if (reply != null) {
-            SessionMessage assistantMsg = new SessionMessage(
+            dao.insertOrUpdate(new SessionMessage(
                     UUID.randomUUID().toString(), sessionId, sequence,
-                    MessageRole.MODEL, reply, null, null, now);
-            dao.insertOrUpdate(assistantMsg);
+                    MessageRole.MODEL, reply, null, null, now));
         }
     }
 
-    private int nextSequence(String sessionId) {
-        SessionMessage[] rows = dao.query(SessionMessage.class, "session_id = ?", sessionId);
-        if (rows == null || rows.length == 0) return 0;
-        int max = -1;
-        for (SessionMessage row : rows) {
-            if (row.sequence > max) max = row.sequence;
-        }
-        return max + 1;
-    }
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
 
     private Message[] toMessages(SessionMessage[] rows) {
         if (rows == null || rows.length == 0) return new Message[0];
@@ -106,21 +273,16 @@ public class AgentOrchestrator {
         for (int i = 0; i < rows.length; i++) {
             SessionMessage row = rows[i];
             Message msg = new Message(row.role, row.content);
-            if (row.toolCallsJson != null) {
-                msg.setToolCalls(JsonUtil.fromJson(row.toolCallsJson, ToolCall[].class));
-            }
-            if (row.toolCallId != null) {
-                msg.setToolCallId(row.toolCallId);
-            }
+            if (row.toolCallsJson != null) msg.setToolCalls(JsonUtil.fromJson(row.toolCallsJson, ToolCall[].class));
+            if (row.toolCallId != null) msg.setToolCallId(row.toolCallId);
             messages[i] = msg;
         }
         return messages;
     }
 
     private Message[] appendMessage(Message[] messages, String role, String content) {
-        Message[] current = messages == null ? new Message[0] : messages;
-        Message[] updated = Arrays.copyOf(current, current.length + 1);
-        updated[current.length] = new Message(role, content);
+        Message[] updated = Arrays.copyOf(messages, messages.length + 1);
+        updated[messages.length] = new Message(role, content);
         return updated;
     }
 
@@ -129,16 +291,17 @@ public class AgentOrchestrator {
         return name == null || name.isBlank() ? "agent-" + index : name;
     }
 
-    private String extractUserDisplay(String content) {
-        if (content == null) return null;
+    private boolean isToolCall(Response response) {
+        return response.getChoices() != null
+                && response.getChoices().length > 0
+                && "tool_calls".equals(response.getChoices()[0].getFinishReason());
+    }
 
-        String openTag = "<user_display>";
-        String closeTag = "</user_display>";
-        int open = content.indexOf(openTag);
-        int close = content.indexOf(closeTag);
-        if (open < 0 || close < 0 || close <= open) return content;
-
-        int start = open + openTag.length();
-        return content.substring(start, close).trim();
+    private String[] extractToolNames(Response response) {
+        ToolCall[] tcs = response.getChoices()[0].getMessage().getToolCalls();
+        if (tcs == null) return new String[0];
+        String[] names = new String[tcs.length];
+        for (int i = 0; i < tcs.length; i++) names[i] = tcs[i].getFunction().getName();
+        return names;
     }
 }
