@@ -1,6 +1,7 @@
 package thingai.edge.aigateway;
 
 import thingai.edge.aigateway.agent.AgentOrchestrator;
+import thingai.edge.aigateway.agent.mcp.McpRegistry;
 import thingai.edge.aigateway.agent.preset.AssistantAgent;
 import thingai.edge.aigateway.api.ApiServer;
 import thingai.edge.aigateway.llm.LlamaCppProvider;
@@ -22,11 +23,18 @@ public class Main {
         service.setLlamaServerUrl(llamaServerUrl);
         service.init();
 
+        // MCP — load servers from config (no-op if file absent)
+        McpRegistry mcp = new McpRegistry();
+        mcp.loadConfig("mcp-servers.json");
+
         LlamaCppProvider provider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
         AgentOrchestrator orchestrator = new AgentOrchestrator(
                 service.getDao(),
-                AssistantAgent.create(provider)
+                AssistantAgent.create(provider, mcp.getAllTools())
         );
+
+        // Graceful shutdown: close MCP server processes on JVM exit
+        Runtime.getRuntime().addShutdownHook(new Thread(mcp::close));
 
         ApiServer apiServer = new ApiServer(llamaServerUrl, orchestrator);
         apiServer.start();
