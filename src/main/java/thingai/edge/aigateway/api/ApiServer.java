@@ -2,7 +2,6 @@ package thingai.edge.aigateway.api;
 
 import io.javalin.Javalin;
 import io.javalin.http.staticfiles.Location;
-import thingai.edge.aigateway.agent.AgentOrchestrator;
 import thingai.edge.aigateway.api.routes.RouteAgent;
 import thingai.edge.aigateway.api.routes.RouteChat;
 import thingai.edge.aigateway.api.routes.RouteRoot;
@@ -15,26 +14,22 @@ public class ApiServer {
 
     private Javalin app;
     private final int port;
-    private final String llamaServerUrl;
-    private final AgentOrchestrator orchestrator;
 
-    public ApiServer(String llamaServerUrl, AgentOrchestrator orchestrator) {
-        this(DEFAULT_PORT, llamaServerUrl, orchestrator);
+    public ApiServer() {
+        this(DEFAULT_PORT);
     }
 
-    public ApiServer(int port, String llamaServerUrl, AgentOrchestrator orchestrator) {
+    public ApiServer(int port) {
         this.port = port;
-        this.llamaServerUrl = llamaServerUrl;
-        this.orchestrator = orchestrator;
     }
 
     public void start() {
-        RouteAgent routeAgent = new RouteAgent(orchestrator);
+        RouteAgent routeAgent = new RouteAgent();
         app = Javalin.create(config -> {
             config.staticFiles.add("/public", Location.CLASSPATH);
             config.routes.apiBuilder(() -> path("api", () -> {
                 new RouteRoot().addEndpoints();
-                new RouteChat(llamaServerUrl).addEndpoints();
+                new RouteChat().addEndpoints();
                 routeAgent.addEndpoints();
             }));
             config.routes.sse("/api/agent/chat/stream", routeAgent.sseHandler());

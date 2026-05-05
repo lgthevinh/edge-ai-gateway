@@ -23,7 +23,7 @@ import java.util.Map;
  * Gson-backed implementation of the MCP SDK's {@link McpJsonMapper} interface.
  * Implements all read/write/convert overloads so no Jackson dependency is required.
  */
-public class GsonMcpJsonMapper implements McpJsonMapper {
+public class McpGsonJsonMapper implements McpJsonMapper {
     private static final String TAG = "GsonMcpJsonMapper";
 
     private static final Type MAP_TYPE = new TypeToken<Map<String, Object>>() {}.getType();

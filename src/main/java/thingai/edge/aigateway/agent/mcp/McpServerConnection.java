@@ -43,11 +43,11 @@ public class McpServerConnection implements Closeable {
                 .build();
 
         // StdioClientTransport takes ServerParameters and our Gson-backed mapper
-        StdioClientTransport transport = new StdioClientTransport(params, new GsonMcpJsonMapper());
+        StdioClientTransport transport = new StdioClientTransport(params, new McpGsonJsonMapper());
 
         McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("edge-ai-gateway", "1.0"))
-                .jsonSchemaValidator(new GsonJsonSchemaValidatorSupplier().get())
+                .jsonSchemaValidator(new McpGsonJsonSchemaValidatorSupplier().get())
                 .build();
 
         client.initialize();

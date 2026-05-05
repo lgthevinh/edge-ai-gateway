@@ -41,6 +41,7 @@ public class LlamaCppProvider extends LlmProvider {
         HttpRequest request = buildRequest(content, false);
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            ILog.d(TAG, "chatCompletion", "response: " + response.body());
             return JsonUtil.fromJson(response.body(), Response.class);
         } catch (Exception e) {
             ILog.d(TAG, e.getMessage());
@@ -62,6 +63,7 @@ public class LlamaCppProvider extends LlmProvider {
 
                     if (data.equals("[DONE]")) {
                         String text = fullText.toString();
+                        ILog.d(TAG, "chatCompletionAsync", "text: " + text.trim());
                         callback.onComplete(text);
                         promise.complete(buildResponse(text));
                         return;
@@ -120,7 +122,7 @@ public class LlamaCppProvider extends LlmProvider {
         }
         String json = JsonUtil.toJson(map);
         return HttpRequest.newBuilder()
-                .uri(URI.create(baseUrl + "/v1/chat/completions"))
+                .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(json))

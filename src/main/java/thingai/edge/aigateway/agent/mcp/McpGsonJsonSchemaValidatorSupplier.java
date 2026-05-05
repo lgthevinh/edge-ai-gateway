@@ -6,7 +6,7 @@ import io.modelcontextprotocol.json.schema.JsonSchemaValidatorSupplier;
 
 import java.util.Map;
 
-public class GsonJsonSchemaValidatorSupplier implements JsonSchemaValidatorSupplier {
+public class McpGsonJsonSchemaValidatorSupplier implements JsonSchemaValidatorSupplier {
     private final JsonSchemaValidator validator = new GsonJsonSchemaValidator();
 
     @Override

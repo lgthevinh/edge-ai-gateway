@@ -2,6 +2,7 @@ package thingai.edge.aigateway.api.routes;
 
 import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
+import thingai.edge.aigateway.EdgeAiGateway;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.io.InputStream;
@@ -21,21 +22,16 @@ public class RouteChat implements EndpointGroup {
             .connectTimeout(Duration.ofSeconds(30))
             .build();
 
-    private final String llamaServerUrl;
-
-    public RouteChat(String llamaServerUrl) {
-        this.llamaServerUrl = llamaServerUrl;
-    }
-
     @Override
     public void addEndpoints() {
         path("chat", () -> {
             post(ctx -> {
                 String body = ctx.body();
                 String auth = ctx.header("Authorization");
+                String llamaServerUrl = EdgeAiGateway.getLlamaServerUrlStatic();
 
                 HttpRequest request = HttpRequest.newBuilder()
-                        .uri(URI.create(llamaServerUrl + "/v1/chat/completions"))
+                        .uri(URI.create(llamaServerUrl + "/chat/completions"))
                         .header("Content-Type", "application/json")
                         .header("Authorization", auth != null ? auth : "")
                         .POST(HttpRequest.BodyPublishers.ofString(body))

@@ -4,8 +4,6 @@ import org.thingai.base.utils.ArrayUtils;
 import thingai.edge.aigateway.agent.Agent;
 import thingai.edge.aigateway.agent.IAgentTool;
 import thingai.edge.aigateway.agent.tools.CurlApiTool;
-import thingai.edge.aigateway.agent.tools.ListFilesTool;
-import thingai.edge.aigateway.agent.tools.ReadFileTool;
 import thingai.edge.aigateway.llm.LlmProvider;
 
 public class AssistantAgent {
@@ -14,7 +12,7 @@ public class AssistantAgent {
     }
 
     public static Agent create(LlmProvider llmProvider, IAgentTool... extraTools) {
-        IAgentTool[] builtIn = { new ListFilesTool(), new ReadFileTool(), new CurlApiTool() };
+        IAgentTool[] builtIn = { new CurlApiTool() };
         IAgentTool[] all = ArrayUtils.concat(builtIn, extraTools);
         return new Agent.Builder()
                 .name("Assistant")

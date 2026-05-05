@@ -32,7 +32,7 @@ import java.util.concurrent.CompletionException;
  */
 public class AgentOrchestrator {
     private static final String TAG = "AgentOrchestrator";
-    private static final int DEFAULT_MAX_TURNS = 10;
+    private static final int DEFAULT_MAX_TURNS = 50;
 
     private final Agent[] agents;
     private final Dao dao;

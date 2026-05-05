@@ -5,6 +5,7 @@ let toolActivityEl = null;
 let responseTextEl = null;
 let stageLabelEl   = null;
 let tokenBuffer    = '';
+let finalBuffer    = '';
 
 marked.setOptions({ breaks: true, gfm: true });
 
@@ -19,6 +20,7 @@ function newSession() {
     responseTextEl = null;
     stageLabelEl   = null;
     tokenBuffer    = '';
+    finalBuffer    = '';
 }
 
 // ── Status pill ───────────────────────────────────────────────────────────
@@ -115,15 +117,23 @@ function appendToken(token) {
 function finalizeResponse(msgEl) {
     msgEl.classList.remove('streaming-bubble');
 
+    const renderText = finalBuffer || tokenBuffer;
+    if (responseTextEl) {
+        responseTextEl.textContent = renderText;
+    }
+
     // Add separator between tool turns and final answer if tools were used
-    if (toolActivityEl && toolActivityEl.children.length > 0 && tokenBuffer) {
+    if (toolActivityEl && toolActivityEl.children.length > 0 && renderText) {
         const sep = document.createElement('div');
         sep.className = 'tool-separator';
         toolActivityEl.appendChild(sep);
     }
 
     // Render markdown into the response-text element
-    if (responseTextEl) responseTextEl.innerHTML = marked.parse(tokenBuffer || '');
+    if (responseTextEl) {
+        responseTextEl.classList.add('rendered-markdown');
+        responseTextEl.innerHTML = marked.parse(renderText || '');
+    }
 
     scrollToBottom();
 }
@@ -160,6 +170,7 @@ function sendMessage() {
     responseTextEl = null;
     stageLabelEl   = null;
     tokenBuffer    = '';
+    finalBuffer    = '';
 
     appendUserMessage(text);
     const msgEl = createAssistantBubble();
@@ -183,6 +194,16 @@ function sendMessage() {
             if (typeof obj.token === 'string') {
                 appendToken(obj.token);
                 setStatus('streaming');
+            }
+        } catch (_) {}
+    });
+
+    // Final — authoritative completed text from the backend
+    es.addEventListener('final', e => {
+        try {
+            const obj = JSON.parse(e.data || '{}');
+            if (typeof obj.final_text === 'string') {
+                finalBuffer = obj.final_text;
             }
         } catch (_) {}
     });
