@@ -2,13 +2,20 @@ package thingai.edge.aigateway.agent.mcp;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
+import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
+import io.modelcontextprotocol.common.McpTransportContext;
+import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.thingai.base.log.ILog;
 
 import java.io.Closeable;
+import java.net.URI;
+import java.net.http.HttpRequest;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Manages the lifecycle of a single MCP server process connected via stdio.
@@ -45,22 +52,25 @@ public class McpServerConnection implements Closeable {
         // StdioClientTransport takes ServerParameters and our Gson-backed mapper
         StdioClientTransport transport = new StdioClientTransport(params, new McpGsonJsonMapper());
 
-        McpSyncClient client = McpClient.sync(transport)
-                .clientInfo(new McpSchema.Implementation("edge-ai-gateway", "1.0"))
-                .jsonSchemaValidator(new McpGsonJsonSchemaValidatorSupplier().get())
+        return buildMcpClient(name, transport);
+    }
+
+    public static McpServerConnection connect(String name, String url, String endpoint, Map<String, String> headers) {
+        McpClientTransport transport = HttpClientStreamableHttpTransport
+                .builder(url)
+                .endpoint(endpoint)
+                .httpRequestCustomizer(new McpSyncHttpClientRequestCustomizer() {
+                    @Override
+                    public void customize(HttpRequest.Builder builder, String method, URI endpoint, String body, McpTransportContext context) {
+                        for (Map.Entry<String, String> header : headers.entrySet()) {
+                            builder.header(header.getKey(), header.getValue());
+                        }
+                    }
+                })
+                .jsonMapper(new McpGsonJsonMapper())
                 .build();
 
-        client.initialize();
-
-        List<McpSchema.Tool> tools = client.listTools().tools();
-        List<McpToolAdapter> adapters = tools.stream()
-                .map(t -> new McpToolAdapter(client, t))
-                .toList();
-
-        ILog.d(TAG, "Connected MCP server '" + name + "' — " + tools.size() + " tool(s): "
-                + tools.stream().map(McpSchema.Tool::name).toList());
-
-        return new McpServerConnection(name, client, adapters);
+        return buildMcpClient(name, transport);
     }
 
     public String getName()                     { return name; }
@@ -74,5 +84,23 @@ public class McpServerConnection implements Closeable {
         } catch (Exception e) {
             ILog.d(TAG, "Error closing MCP server '" + name + "': " + e.getMessage());
         }
+    }
+
+    private static McpServerConnection buildMcpClient(String name, McpClientTransport transport) {
+        McpSyncClient client = McpClient.sync(transport)
+                .clientInfo(new McpSchema.Implementation("edge-ai-gateway", "1.0"))
+                .jsonSchemaValidator(new McpGsonJsonSchemaValidatorSupplier().get())
+                .build();
+
+        client.initialize();
+        List<McpSchema.Tool> tools = client.listTools().tools();
+        List<McpToolAdapter> adapters = tools.stream()
+                .map(t -> new McpToolAdapter(client, t))
+                .toList();
+
+        ILog.d(TAG, "Connected MCP server '" + name + "' — " + tools.size() + " tool(s): "
+                + tools.stream().map(McpSchema.Tool::name).toList());
+
+        return new McpServerConnection(name, client, adapters);
     }
 }

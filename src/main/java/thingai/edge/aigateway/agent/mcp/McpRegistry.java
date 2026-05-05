@@ -8,12 +8,10 @@ import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.agent.IAgentTool;
 
 import java.io.Closeable;
+import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 /**
  * Manages the set of MCP server connections and exposes their tools as a flat
@@ -44,10 +42,20 @@ public class McpRegistry implements Closeable {
      * Connects to a single MCP server by spawning its process.
      * If a server with the same name already exists, it is disconnected first.
      */
-    public void connect(String name, String command, List<String> args) {
+    public void connectStdio(String name, String command, List<String> args) {
         disconnect(name);
         try {
             McpServerConnection conn = McpServerConnection.connect(name, command, args);
+            connections.put(name, conn);
+        } catch (Exception e) {
+            ILog.d(TAG, "Failed to connect MCP server '" + name + "': " + e.getMessage());
+        }
+    }
+
+    public void connectHttp(String name, String url, String endpoint, Map<String, String> headers) {
+        disconnect(name);
+        try {
+            McpServerConnection conn = McpServerConnection.connect(name, url, endpoint, headers);
             connections.put(name, conn);
         } catch (Exception e) {
             ILog.d(TAG, "Failed to connect MCP server '" + name + "': " + e.getMessage());
@@ -68,7 +76,7 @@ public class McpRegistry implements Closeable {
      * @param configPath path to {@code mcp-servers.json}
      */
     public void loadConfig(String configPath) {
-        java.io.File file = new java.io.File(configPath);
+        File file = new File(configPath);
         if (!file.exists()) {
             ILog.d(TAG, "MCP config not found at '" + configPath + "' — skipping MCP tools");
             return;
@@ -83,15 +91,36 @@ public class McpRegistry implements Closeable {
             for (JsonElement el : servers) {
                 JsonObject server = el.getAsJsonObject();
                 String name    = server.get("name").getAsString();
-                String command = server.get("command").getAsString();
-                List<String> args = new ArrayList<>();
-                if (server.has("args")) {
-                    for (JsonElement arg : server.getAsJsonArray("args")) {
-                        args.add(arg.getAsString());
+
+                // if command detected, use stdio transport; otherwise look for url+endpoint for http transport
+                if (server.has("command")) {
+                    String command = server.get("command").getAsString();
+                    List<String> args = new ArrayList<>();
+                    if (server.has("args")) {
+                        for (JsonElement arg : server.getAsJsonArray("args")) {
+                            args.add(arg.getAsString());
+                        }
                     }
+                    ILog.d(TAG, "loadConfig", "stdio", name);
+                    connectStdio(name, command, args);
                 }
-                ILog.d(TAG, "Connecting MCP server: " + name + " [" + command + " " + args + "]");
-                connect(name, command, args);
+
+                if (server.has("url")) {
+                    String url = server.get("url").getAsString();
+                    String endpoint = server.get("endpoint").getAsString();
+
+                    Map<String, String> headers = new HashMap<>();
+                    if (server.has("headers")) {
+                        JsonObject headersJson = server.getAsJsonObject("headers");
+                        for (Map.Entry<String, JsonElement> header : headersJson.entrySet()) {
+                            headers.put(header.getKey(), header.getValue().getAsString());
+                        }
+                    }
+
+                    ILog.d(TAG, "loadConfig", "http", name);
+                    connectHttp(name, url, endpoint, headers);
+                }
+
             }
         } catch (IOException e) {
             ILog.d(TAG, "Error reading mcp-servers.json: " + e.getMessage());
