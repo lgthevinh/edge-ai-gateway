@@ -5,6 +5,10 @@ plugins {
 group = "thingai.edge.agent"
 version = "1.0-SNAPSHOT"
 
+val clientDir = layout.projectDirectory.dir("client")
+val clientDistDir = clientDir.dir("dist/client/browser")
+val publicResourcesDir = layout.projectDirectory.dir("src/main/resources/public")
+
 repositories {
     mavenCentral()
 }
@@ -35,4 +39,34 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+}
+
+tasks.register<Exec>("buildClient") {
+    workingDir = clientDir.asFile
+
+    val npmCommand = if (System.getProperty("os.name").lowercase().contains("windows")) {
+        "npm.cmd"
+    } else {
+        "npm"
+    }
+
+    commandLine(npmCommand, "run", "build")
+
+    inputs.files(
+        fileTree(clientDir.dir("src")),
+        clientDir.file("package.json"),
+        clientDir.file("package-lock.json"),
+        clientDir.file("angular.json")
+    )
+    outputs.dir(clientDistDir)
+}
+
+tasks.register<Sync>("syncClientResources") {
+    dependsOn("buildClient")
+    from(clientDistDir)
+    into(publicResourcesDir)
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn("syncClientResources")
 }

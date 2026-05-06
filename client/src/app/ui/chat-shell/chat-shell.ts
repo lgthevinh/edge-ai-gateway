@@ -110,7 +110,7 @@ export class ChatShell {
   }
 
   private createMessage(role: ChatMessage['role'], content: string, streaming: boolean): ChatMessage {
-    return { id: crypto.randomUUID(), role, content, tools: [], streaming };
+    return { id: globalThis.crypto?.randomUUID() ?? `message-${Date.now()}`, role, content, tools: [], streaming };
   }
 
   private findMessage(id: string): ChatMessage {

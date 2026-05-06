@@ -7,6 +7,10 @@ export class BrowserStorageService {
   private readonly platformId = inject(PLATFORM_ID);
   private readonly isBrowser = isPlatformBrowser(this.platformId);
 
+  isAvailable(): boolean {
+    return this.isBrowser;
+  }
+
   getItem(key: string): string | null {
     if (!this.isBrowser) return null;
     return this.document.defaultView?.localStorage.getItem(key) ?? null;

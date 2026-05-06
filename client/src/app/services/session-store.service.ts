@@ -15,6 +15,7 @@ export class SessionStoreService {
   readonly messages = signal<ChatMessage[]>([]);
 
   constructor() {
+    if (!this.storage.isAvailable()) return;
     if (!this.activeSessionId()) {
       this.createSession();
       return;
@@ -23,7 +24,7 @@ export class SessionStoreService {
   }
 
   createSession(): string {
-    const id = crypto.randomUUID();
+    const id = this.createId();
     const now = Date.now();
     const session: SessionRecord = { id, label: this.formatLabel(now), createdAt: now, updatedAt: now };
     this.sessions.update((sessions) => [session, ...sessions]);
@@ -101,5 +102,9 @@ export class SessionStoreService {
 
   private formatLabel(timestamp: number): string {
     return new Date(timestamp).toLocaleString();
+  }
+
+  private createId(): string {
+    return globalThis.crypto?.randomUUID() ?? `session-${Date.now()}`;
   }
 }
