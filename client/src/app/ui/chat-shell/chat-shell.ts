@@ -2,6 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signa
 import { FormsModule } from '@angular/forms';
 import { AgentChatService } from '../../services/agent-chat.service';
 import { ChatMessage, ChatStatus, ResponseUsage } from '../../services/chat.models';
+import { DocumentService } from '../../services/document.service';
 import { SessionStoreService } from '../../services/session-store.service';
 import { MarkdownService } from '../../middleware/markdown.service';
 
@@ -14,6 +15,7 @@ import { MarkdownService } from '../../middleware/markdown.service';
 })
 export class ChatShell {
   private readonly agentChat = inject(AgentChatService);
+  private readonly documentService = inject(DocumentService);
   readonly sessionStore = inject(SessionStoreService);
   readonly markdown = inject(MarkdownService);
 
@@ -25,6 +27,8 @@ export class ChatShell {
   readonly status = signal<ChatStatus>('idle');
   readonly isBusy = computed(() => this.status() !== 'idle');
   readonly activeUsage = this.sessionStore.activeUsage;
+  readonly uploadStatus = signal('');
+  readonly isUploading = signal(false);
 
   private activeSource: EventSource | null = null;
 
@@ -52,9 +56,27 @@ export class ChatShell {
     this.selectSession(this.sessionInput());
   }
 
+  async uploadDocument(event: Event): Promise<void> {
+    const input = event.target as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file || this.isBusy() || this.isUploading()) return;
+
+    this.isUploading.set(true);
+    this.uploadStatus.set(`Uploading ${file.name}...`);
+    try {
+      const document = await this.documentService.uploadTextFile(file);
+      this.uploadStatus.set(`Added ${document.title || document.path}`);
+    } catch (error) {
+      this.uploadStatus.set(error instanceof Error ? error.message : 'Upload failed');
+    } finally {
+      this.isUploading.set(false);
+    }
+  }
+
   send(): void {
     const text = this.input().trim();
-    if (!text || this.isBusy()) return;
+    if (!text || this.isBusy() || this.isUploading()) return;
 
     const sessionId = this.sessionStore.activeSessionId() || this.sessionStore.createSession();
     const history = this.sessionStore.getHistoryForRequest();

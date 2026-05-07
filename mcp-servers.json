@@ -2,12 +2,22 @@
   "servers": [
     {
       "name": "mcp-server-filesystem",
+      "type": "stdio",
       "command": "npx",
       "args": [
         "-y",
         "@modelcontextprotocol/server-filesystem",
         "/data/"
       ]
+    },
+    {
+      "name": "mcp-server-rogo",
+      "type": "sse",
+      "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
+      "endpoint": "/",
+      "headers": {
+        "Authorization": "Bearer ${ROGO_MCP_TOKEN}"
+      }
     }
   ]
 }

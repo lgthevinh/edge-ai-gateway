@@ -79,6 +79,12 @@ select { font-family: var(--font); }
 .usage-caption { margin-top: 3px; color: var(--text-dim); font-size: 11px; }
 .usage-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-top: 10px; color: var(--text-dim); font-size: 11px; }
 .usage-grid strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
+.upload-panel { display: flex; flex-direction: column; gap: 6px; }
+.upload-button { display: flex; align-items: center; justify-content: center; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface2); color: var(--text); font-size: 12px; cursor: pointer; }
+.upload-button:hover:not(.disabled) { border-color: var(--accent); color: var(--accent-h); }
+.upload-button.disabled { opacity: .5; cursor: not-allowed; }
+.upload-button input { display: none; }
+.upload-status { color: var(--text-dim); font-size: 11px; line-height: 1.4; word-break: break-word; }
 
 .conv-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .chat-toolbar { display: flex; align-items: center; padding: 12px 24px; border-bottom: 1px solid var(--border); gap: 10px; flex-shrink: 0; }

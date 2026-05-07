@@ -2,18 +2,15 @@ package thingai.edge.aigateway.agent.mcp;
 
 import io.modelcontextprotocol.client.McpClient;
 import io.modelcontextprotocol.client.McpSyncClient;
+import io.modelcontextprotocol.client.transport.HttpClientSseClientTransport;
 import io.modelcontextprotocol.client.transport.HttpClientStreamableHttpTransport;
 import io.modelcontextprotocol.client.transport.ServerParameters;
 import io.modelcontextprotocol.client.transport.StdioClientTransport;
-import io.modelcontextprotocol.client.transport.customizer.McpSyncHttpClientRequestCustomizer;
-import io.modelcontextprotocol.common.McpTransportContext;
 import io.modelcontextprotocol.spec.McpClientTransport;
 import io.modelcontextprotocol.spec.McpSchema;
 import org.thingai.base.log.ILog;
 
 import java.io.Closeable;
-import java.net.URI;
-import java.net.http.HttpRequest;
 import java.util.List;
 import java.util.Map;
 
@@ -44,7 +41,7 @@ public class McpServerConnection implements Closeable {
      * @param command the executable to run (e.g. "npx", "python3")
      * @param args    arguments to pass to the executable
      */
-    public static McpServerConnection connect(String name, String command, List<String> args) {
+    public static McpServerConnection connectStdio(String name, String command, List<String> args) {
         ServerParameters params = ServerParameters.builder(command)
                 .args(args)
                 .build();
@@ -55,18 +52,30 @@ public class McpServerConnection implements Closeable {
         return buildMcpClient(name, transport);
     }
 
-    public static McpServerConnection connect(String name, String url, String endpoint, Map<String, String> headers) {
+    public static McpServerConnection connectHttp(String name, String url, String endpoint, Map<String, String> headers) {
         McpClientTransport transport = HttpClientStreamableHttpTransport
                 .builder(url)
-                .endpoint(endpoint)
-                .httpRequestCustomizer(new McpSyncHttpClientRequestCustomizer() {
-                    @Override
-                    public void customize(HttpRequest.Builder builder, String method, URI endpoint, String body, McpTransportContext context) {
-                        for (Map.Entry<String, String> header : headers.entrySet()) {
-                            builder.header(header.getKey(), header.getValue());
-                        }
+                .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
+                    for (Map.Entry<String, String> header : headers.entrySet()) {
+                        builder.header(header.getKey(), header.getValue());
                     }
                 })
+                .endpoint(endpoint)
+                .jsonMapper(new McpGsonJsonMapper())
+                .build();
+
+        return buildMcpClient(name, transport);
+    }
+
+    public static McpServerConnection connectSse(String name, String url, String endpoint, Map<String, String> headers) {
+        McpClientTransport transport = HttpClientSseClientTransport
+                .builder(url)
+                .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
+                    for (Map.Entry<String, String> header : headers.entrySet()) {
+                        builder.header(header.getKey(), header.getValue());
+                    }
+                })
+                .sseEndpoint(endpoint)
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
 

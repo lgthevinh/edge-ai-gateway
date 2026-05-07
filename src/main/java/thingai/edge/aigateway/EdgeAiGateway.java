@@ -3,10 +3,17 @@ package thingai.edge.aigateway;
 import org.thingai.base.Service;
 import org.thingai.base.dao.Dao;
 import org.thingai.base.log.ILog;
+import org.thingai.base.utils.ArrayUtils;
 import org.thingai.platform.dao.DaoSqlite;
 import thingai.edge.aigateway.agent.AgentOrchestrator;
+import thingai.edge.aigateway.agent.IAgentTool;
 import thingai.edge.aigateway.agent.mcp.McpRegistry;
 import thingai.edge.aigateway.agent.preset.AssistantAgent;
+import thingai.edge.aigateway.agent.tools.ListDocumentsTool;
+import thingai.edge.aigateway.agent.tools.ReadDocumentTool;
+import thingai.edge.aigateway.knowledgebase.DocumentImportResult;
+import thingai.edge.aigateway.knowledgebase.KnowledgeDocument;
+import thingai.edge.aigateway.knowledgebase.KnowledgeDocumentService;
 import thingai.edge.aigateway.llm.LlamaCppProvider;
 import thingai.edge.aigateway.session.Session;
 import thingai.edge.aigateway.session.SessionMessage;
@@ -26,6 +33,7 @@ public class EdgeAiGateway extends Service {
     private static McpRegistry mcpRegistry;
     private static LlamaCppProvider llamaCppProvider;
     private static AgentOrchestrator agentOrchestrator;
+    private static KnowledgeDocumentService knowledgeDocumentService;
     private static String configuredLlamaServerUrl;
 
     protected EdgeAiGateway() {
@@ -53,16 +61,30 @@ public class EdgeAiGateway extends Service {
         dao = new DaoSqlite(getAppDir() + "/data.db");
         dao.initDao(new Class[] {
                 Session.class,
-                SessionMessage.class
+                SessionMessage.class,
+                KnowledgeDocument.class
         });
+
+        knowledgeDocumentService = new KnowledgeDocumentService(dao, "data/knowledge");
+        DocumentImportResult documentImportResult = knowledgeDocumentService.importMarkdownDocuments();
+        ILog.d(TAG, "onServiceInit", "knowledge import scanned=" + documentImportResult.scanned
+                + " inserted=" + documentImportResult.inserted
+                + " updated=" + documentImportResult.updated
+                + " unchanged=" + documentImportResult.unchanged
+                + " failed=" + documentImportResult.failed);
 
         mcpRegistry = new McpRegistry();
         mcpRegistry.loadConfig("mcp-servers.json");
 
         llamaCppProvider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
+        IAgentTool[] documentTools = new IAgentTool[] {
+                new ListDocumentsTool(knowledgeDocumentService),
+                new ReadDocumentTool(knowledgeDocumentService)
+        };
+        IAgentTool[] extraTools = ArrayUtils.concat(documentTools, mcpRegistry.getAllTools());
         agentOrchestrator = new AgentOrchestrator(
                 dao,
-                AssistantAgent.create(llamaCppProvider, mcpRegistry.getAllTools())
+                AssistantAgent.create(llamaCppProvider, extraTools)
         );
 
         ILog.d(TAG, "onServiceInit", "gateway runtime initialized");
@@ -101,6 +123,13 @@ public class EdgeAiGateway extends Service {
         return mcpRegistry;
     }
 
+    public static KnowledgeDocumentService getKnowledgeDocumentService() {
+        if (knowledgeDocumentService == null) {
+            throw new IllegalStateException("EdgeAiGateway has not initialized KnowledgeDocumentService");
+        }
+        return knowledgeDocumentService;
+    }
+
     public static String getLlamaServerUrlStatic() {
         if (configuredLlamaServerUrl == null) {
             throw new IllegalStateException("EdgeAiGateway has not initialized llama server URL");
@@ -116,6 +145,7 @@ public class EdgeAiGateway extends Service {
         }
         agentOrchestrator = null;
         llamaCppProvider = null;
+        knowledgeDocumentService = null;
         configuredLlamaServerUrl = null;
     }
 

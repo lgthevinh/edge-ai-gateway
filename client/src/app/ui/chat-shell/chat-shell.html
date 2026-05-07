@@ -42,6 +42,16 @@
           <strong>{{ activeUsage().completionTokens }}</strong>
         </div>
       </div>
+
+      <div class="upload-panel">
+        <label class="upload-button" [class.disabled]="isBusy() || isUploading()">
+          <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" (change)="uploadDocument($event)" [disabled]="isBusy() || isUploading()">
+          <span>{{ isUploading() ? 'Uploading...' : 'Upload document' }}</span>
+        </label>
+        @if (uploadStatus()) {
+          <div class="upload-status">{{ uploadStatus() }}</div>
+        }
+      </div>
     </section>
   </nav>
 

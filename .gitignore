@@ -45,5 +45,6 @@ bin/
 ### AI
 .codex
 
-### Environment Variables
+### Environment Variables & Data
 .env
+data/
