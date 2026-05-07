@@ -71,8 +71,14 @@ select { font-family: var(--font); }
 }
 
 .session-id-row button:hover:not(:disabled) { border-color: var(--accent); color: var(--accent-h); }
+.session-id-row button.danger:hover:not(:disabled) { border-color: #e06b6b; color: #ff9b9b; }
 .session-id-row button:disabled, input:disabled, select:disabled { opacity: .5; cursor: not-allowed; }
 .session-id-row svg { width: 14px; height: 14px; }
+.usage-panel { margin-top: 8px; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface3); }
+.usage-total { font-family: var(--mono); font-size: 20px; font-weight: 700; color: var(--accent-h); line-height: 1; }
+.usage-caption { margin-top: 3px; color: var(--text-dim); font-size: 11px; }
+.usage-grid { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; margin-top: 10px; color: var(--text-dim); font-size: 11px; }
+.usage-grid strong { color: var(--text); font-family: var(--mono); font-weight: 600; }
 
 .conv-main { flex: 1; display: flex; flex-direction: column; overflow: hidden; background: var(--bg); }
 .chat-toolbar { display: flex; align-items: center; padding: 12px 24px; border-bottom: 1px solid var(--border); gap: 10px; flex-shrink: 0; }

@@ -8,6 +8,7 @@ import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.llm.response.ResponseChoice;
 import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
+import thingai.edge.aigateway.llm.response.ResponseUsage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.net.URI;
@@ -17,6 +18,7 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 
 public class LlamaCppProvider extends LlmProvider {
@@ -54,6 +56,7 @@ public class LlamaCppProvider extends LlmProvider {
         ILog.d(TAG, "chatCompletionAsync");
         HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
+        AtomicReference<ResponseUsage> usage = new AtomicReference<>();
         CompletableFuture<Response> promise = new CompletableFuture<>();
 
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
@@ -65,12 +68,18 @@ public class LlamaCppProvider extends LlmProvider {
                         String text = fullText.toString();
                         ILog.d(TAG, "chatCompletionAsync", "text: " + text.trim());
                         callback.onComplete(text);
-                        promise.complete(buildResponse(text));
+                        promise.complete(buildResponse(text, usage.get()));
                         return;
                     }
 
                     try {
                         JsonObject obj = JsonUtil.fromJson(data, JsonObject.class);
+                        if (obj.has("usage") && obj.get("usage").isJsonObject()) {
+                            ResponseUsage responseUsage = JsonUtil.fromJson(obj.get("usage").toString(), ResponseUsage.class);
+                            usage.set(responseUsage);
+                            callback.onUsage(responseUsage);
+                        }
+                        if (!obj.has("choices") || obj.getAsJsonArray("choices").isEmpty()) return;
                         var delta = obj.getAsJsonArray("choices")
                                 .get(0).getAsJsonObject()
                                 .getAsJsonObject("delta");
@@ -116,6 +125,9 @@ public class LlamaCppProvider extends LlmProvider {
         map.put("messages", content.getMessages());
         map.put("temperature", content.getTemperature());
         map.put("stream", stream);
+        if (stream) {
+            map.put("stream_options", Map.of("include_usage", true));
+        }
         if (content.getTools() != null && content.getTools().length > 0) {
             map.put("tools", content.getTools());
             map.put("tool_choice", content.getToolChoice());
@@ -129,8 +141,8 @@ public class LlamaCppProvider extends LlmProvider {
                 .build();
     }
 
-    private Response buildResponse(String fullText) {
+    private Response buildResponse(String fullText, ResponseUsage usage) {
         ResponseChoice choice = new ResponseChoice(new Message(MessageRole.MODEL, fullText), "stop");
-        return new Response(new ResponseChoice[]{choice}, null);
+        return new Response(new ResponseChoice[]{choice}, usage);
     }
 }

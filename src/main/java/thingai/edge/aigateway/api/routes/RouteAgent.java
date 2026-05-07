@@ -1,14 +1,20 @@
 package thingai.edge.aigateway.api.routes;
 
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.sse.SseClient;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.EdgeAiGateway;
 import thingai.edge.aigateway.agent.AgentChainCallback;
+import thingai.edge.aigateway.llm.message.Message;
+import thingai.edge.aigateway.llm.message.MessageRole;
+import thingai.edge.aigateway.llm.response.ResponseUsage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
 import static io.javalin.apibuilder.ApiBuilder.path;
@@ -28,8 +34,9 @@ public class RouteAgent implements EndpointGroup {
                 }
                 String sessionId = body.get("session_id").getAsString();
                 String message = body.get("message").getAsString();
+                Message[] history = parseHistory(body);
 
-                String reply = EdgeAiGateway.getAgentOrchestrator().run(sessionId, message);
+                String reply = EdgeAiGateway.getAgentOrchestrator().runWithHistory(message, history);
 
                 JsonObject response = new JsonObject();
                 response.addProperty("reply", reply);
@@ -49,11 +56,13 @@ public class RouteAgent implements EndpointGroup {
 
             String sessionId = params.get("session_id").getAsString();
             String message = params.get("message").getAsString();
+            Message[] history = parseHistory(params);
 
             CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<ResponseUsage> latestUsage = new AtomicReference<>();
             client.onClose(done::countDown);
 
-            EdgeAiGateway.getAgentOrchestrator().runAsync(sessionId, message, new AgentChainCallback() {
+            EdgeAiGateway.getAgentOrchestrator().runAsyncWithHistory(message, history, new AgentChainCallback() {
                 @Override
                 public void onTurn(int turn, String agentName, String[] toolsUsed) {
                     if (!client.terminated()) {
@@ -92,6 +101,8 @@ public class RouteAgent implements EndpointGroup {
                     if (!client.terminated()) {
                         JsonObject event = new JsonObject();
                         event.addProperty("final_text", fullText != null ? fullText : "");
+                        ResponseUsage usage = latestUsage.get();
+                        if (usage != null) event.add("usage", JsonUtil.fromJson(JsonUtil.toJson(usage), JsonObject.class));
                         client.sendEvent("final", JsonUtil.toJson(event));
                         client.sendEvent("done", "{}");
                         client.close();
@@ -105,9 +116,39 @@ public class RouteAgent implements EndpointGroup {
                     if (!client.terminated()) client.close();
                     done.countDown();
                 }
+
+                @Override
+                public void onUsage(ResponseUsage usage) {
+                    if (usage != null) latestUsage.set(usage);
+                }
             });
 
             try { done.await(); } catch (InterruptedException ignored) {}
         };
+    }
+
+    private Message[] parseHistory(JsonObject body) {
+        if (body == null || !body.has("history") || !body.get("history").isJsonArray()) {
+            return new Message[0];
+        }
+
+        JsonArray history = body.getAsJsonArray("history");
+        java.util.ArrayList<Message> messages = new java.util.ArrayList<>();
+        for (JsonElement element : history) {
+            if (!element.isJsonObject()) continue;
+            JsonObject item = element.getAsJsonObject();
+            if (!item.has("role") || !item.has("content")) continue;
+
+            String role = item.get("role").getAsString();
+            String content = item.get("content").getAsString();
+            if (content == null || content.isBlank()) continue;
+
+            if (MessageRole.USER.equals(role)) {
+                messages.add(new Message(MessageRole.USER, content));
+            } else if (MessageRole.MODEL.equals(role) || "model".equals(role)) {
+                messages.add(new Message(MessageRole.MODEL, content));
+            }
+        }
+        return messages.toArray(new Message[0]);
     }
 }

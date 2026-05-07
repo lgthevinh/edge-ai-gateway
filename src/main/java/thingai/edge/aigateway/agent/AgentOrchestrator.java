@@ -58,8 +58,13 @@ public class AgentOrchestrator {
     public String run(String sessionId, String userInput) {
         SessionMessage[] historyRows = loadHistoryRows(sessionId);
         Message[] history = toMessages(historyRows);
-        String finalText = runChain(sessionId, userInput, history, historyRows.length, null);
+        String finalText = runChain(sessionId, userInput, history, historyRows.length, true, null);
         return finalText;
+    }
+
+    /** Blocking — runs with caller-supplied history and does not persist session messages. */
+    public String runWithHistory(String userInput, Message[] history) {
+        return runChain(null, userInput, history != null ? history : new Message[0], 0, false, null);
     }
 
     /**
@@ -71,8 +76,25 @@ public class AgentOrchestrator {
             try {
                 SessionMessage[] historyRows = loadHistoryRows(sessionId);
                 Message[] history = toMessages(historyRows);
-                String finalText = runChain(sessionId, userInput, history, historyRows.length, callback);
+                String finalText = runChain(sessionId, userInput, history, historyRows.length, true, callback);
                 return finalText;
+            } catch (CompletionException e) {
+                throw e;
+            } catch (Exception e) {
+                if (callback != null) callback.onError(e);
+                throw new CompletionException(e);
+            }
+        });
+    }
+
+    /**
+     * Async — runs with caller-supplied history, streams the final answer, and does not
+     * load or persist session messages through the DAO.
+     */
+    public CompletableFuture<String> runAsyncWithHistory(String userInput, Message[] history, AgentChainCallback callback) {
+        return CompletableFuture.supplyAsync(() -> {
+            try {
+                return runChain(null, userInput, history != null ? history : new Message[0], 0, false, callback);
             } catch (CompletionException e) {
                 throw e;
             } catch (Exception e) {
@@ -87,12 +109,12 @@ public class AgentOrchestrator {
     // -------------------------------------------------------------------------
 
     private String runChain(String sessionId, String userInput, Message[] history,
-                            int historyLength, AgentChainCallback callback) {
+                            int historyLength, boolean persistSession, AgentChainCallback callback) {
         // Single-agent shortcut — most common case
         if (agents.length == 1) {
             Message[] messages = agents[0].buildMessages(history, userInput);
             String finalText = runTurnLoop(agents[0], messages, callback);
-            if (finalText != null) persistMessages(sessionId, userInput, finalText, historyLength);
+            if (persistSession && finalText != null) persistMessages(sessionId, userInput, finalText, historyLength);
             if (callback != null) callback.onComplete(finalText);
             return finalText;
         }
@@ -122,7 +144,7 @@ public class AgentOrchestrator {
             }
         }
 
-        persistMessages(sessionId, userInput, finalText, historyLength);
+        if (persistSession) persistMessages(sessionId, userInput, finalText, historyLength);
         if (callback != null) callback.onComplete(finalText);
         return finalText;
     }
@@ -161,6 +183,7 @@ public class AgentOrchestrator {
 
             // Agent decided to stop — deliver final answer
             if (callback != null) {
+                if (response.getUsage() != null) callback.onUsage(response.getUsage());
                 // Stream the final answer for a better UX
                 Message[] finalMessages = current;
                 try {
@@ -168,6 +191,7 @@ public class AgentOrchestrator {
                         @Override public void onToken(String token) { callback.onToken(token); }
                         @Override public void onComplete(String fullText) { /* handled by future */ }
                         @Override public void onError(Exception e) { callback.onError(e); }
+                        @Override public void onUsage(thingai.edge.aigateway.llm.response.ResponseUsage usage) { callback.onUsage(usage); }
                     }).join();
                 } catch (Exception e) {
                     // Fallback: deliver blocking result

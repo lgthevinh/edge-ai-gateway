@@ -1,6 +1,6 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { BrowserStorageService } from '../middleware/browser-storage.service';
-import { ChatMessage, SessionRecord } from './chat.models';
+import { AgentHistoryMessage, ChatMessage, ResponseUsage, SessionRecord } from './chat.models';
 
 const SESSIONS_KEY = 'edge-ai-gateway.sessions';
 const ACTIVE_SESSION_KEY = 'edge-ai-gateway.activeSession';
@@ -13,6 +13,7 @@ export class SessionStoreService {
   readonly sessions = signal<SessionRecord[]>(this.readSessions());
   readonly activeSessionId = signal(this.storage.getItem(ACTIVE_SESSION_KEY) ?? '');
   readonly messages = signal<ChatMessage[]>([]);
+  readonly activeUsage = signal<ResponseUsage>({ promptTokens: 0, completionTokens: 0, totalTokens: 0 });
 
   constructor() {
     if (!this.storage.isAvailable()) return;
@@ -55,16 +56,42 @@ export class SessionStoreService {
   updateMessage(id: string, patch: Partial<ChatMessage>): void {
     this.messages.update((messages) => messages.map((message) => message.id === id ? { ...message, ...patch } : message));
     this.touchActiveSession();
+    this.updateActiveUsage();
     this.persistMessages();
   }
 
   clearActiveMessages(): void {
     this.messages.set([]);
+    this.updateActiveUsage();
+    this.touchActiveSession();
     this.persistMessages();
+  }
+
+  deleteSession(sessionId: string): string {
+    const deletedId = sessionId.trim();
+    if (!deletedId) return this.activeSessionId();
+
+    this.storage.removeItem(`${MESSAGES_PREFIX}${deletedId}`);
+    const remaining = this.sessions().filter((session) => session.id !== deletedId);
+    this.sessions.set(remaining);
+    this.persistSessions();
+
+    if (this.activeSessionId() !== deletedId) return this.activeSessionId();
+
+    const nextId = remaining[0]?.id ?? this.createSession();
+    this.selectSession(nextId);
+    return nextId;
+  }
+
+  getHistoryForRequest(): AgentHistoryMessage[] {
+    return this.messages()
+      .filter((message) => !message.streaming && !message.error && message.content.trim())
+      .map((message) => ({ role: message.role, content: message.content }));
   }
 
   private loadMessages(sessionId: string): void {
     this.messages.set(this.readJson<ChatMessage[]>(`${MESSAGES_PREFIX}${sessionId}`, []));
+    this.updateActiveUsage();
   }
 
   private persistMessages(): void {
@@ -76,8 +103,9 @@ export class SessionStoreService {
   private touchActiveSession(): void {
     const activeId = this.activeSessionId();
     const now = Date.now();
+    const usage = this.sumUsage(this.messages());
     this.sessions.update((sessions) => sessions
-      .map((session) => session.id === activeId ? { ...session, updatedAt: now } : session)
+      .map((session) => session.id === activeId ? { ...session, updatedAt: now, usage } : session)
       .sort((a, b) => b.updatedAt - a.updatedAt));
     this.persistSessions();
   }
@@ -102,6 +130,19 @@ export class SessionStoreService {
 
   private formatLabel(timestamp: number): string {
     return new Date(timestamp).toLocaleString();
+  }
+
+  private updateActiveUsage(): void {
+    const usage = this.sumUsage(this.messages());
+    this.activeUsage.set(usage);
+  }
+
+  private sumUsage(messages: ChatMessage[]): ResponseUsage {
+    return messages.reduce<ResponseUsage>((total, message) => ({
+      promptTokens: total.promptTokens + (message.usage?.promptTokens ?? 0),
+      completionTokens: total.completionTokens + (message.usage?.completionTokens ?? 0),
+      totalTokens: total.totalTokens + (message.usage?.totalTokens ?? 0)
+    }), { promptTokens: 0, completionTokens: 0, totalTokens: 0 });
   }
 
   private createId(): string {

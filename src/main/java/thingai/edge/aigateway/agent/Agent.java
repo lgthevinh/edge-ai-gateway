@@ -82,6 +82,11 @@ public class Agent {
                 callback.onError(e);
                 result.completeExceptionally(e);
             }
+
+            @Override
+            public void onUsage(thingai.edge.aigateway.llm.response.ResponseUsage usage) {
+                callback.onUsage(usage);
+            }
         });
         return result;
     }

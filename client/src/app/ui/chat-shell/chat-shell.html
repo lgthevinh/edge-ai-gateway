@@ -18,16 +18,30 @@
         <button type="button" (click)="createSession()" [disabled]="isBusy()" title="New session" aria-label="New session">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         </button>
+        <button type="button" class="danger" (click)="deleteActiveSession()" [disabled]="isBusy()" title="Delete session" aria-label="Delete session">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="M6 6l1 15h10l1-15"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>
+        </button>
       </div>
 
       @if (sessionStore.sessions().length > 0) {
         <label class="session-label" for="session-select">Continue</label>
         <select id="session-select" [ngModel]="sessionStore.activeSessionId()" (ngModelChange)="selectSession($event)" [disabled]="isBusy()">
           @for (session of sessionStore.sessions(); track session.id) {
-            <option [value]="session.id">{{ session.label }} - {{ session.id.slice(0, 8) }}</option>
+            <option [value]="session.id">{{ session.label }} - {{ session.id.slice(0, 8) }} - {{ session.usage?.totalTokens ?? 0 }} tokens</option>
           }
         </select>
       }
+
+      <div class="usage-panel">
+        <div class="usage-total">{{ activeUsage().totalTokens }}</div>
+        <div class="usage-caption">session tokens</div>
+        <div class="usage-grid">
+          <span>Input</span>
+          <strong>{{ activeUsage().promptTokens }}</strong>
+          <span>Output</span>
+          <strong>{{ activeUsage().completionTokens }}</strong>
+        </div>
+      </div>
     </section>
   </nav>
 
@@ -58,6 +72,8 @@
                 <span class="agent-name">Assistant</span>
                 @if (message.streaming && !message.content) {
                   <span class="agent-stage">Thinking...</span>
+                } @else if (message.usage) {
+                  <span class="agent-stage">{{ formatUsage(message.usage) }}</span>
                 }
               </span>
             </div>

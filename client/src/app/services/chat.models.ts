@@ -7,6 +7,7 @@ export interface ChatMessage {
   tools: string[][];
   streaming: boolean;
   error?: boolean;
+  usage?: ResponseUsage;
 }
 
 export interface SessionRecord {
@@ -14,12 +15,24 @@ export interface SessionRecord {
   label: string;
   createdAt: number;
   updatedAt: number;
+  usage?: ResponseUsage;
+}
+
+export interface ResponseUsage {
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+}
+
+export interface AgentHistoryMessage {
+  role: 'user' | 'assistant';
+  content: string;
 }
 
 export interface AgentStreamHandlers {
   turn(tools: string[]): void;
   token(token: string): void;
-  final(text: string): void;
+  final(text: string, usage: ResponseUsage | null): void;
   done(): void;
   error(): void;
 }

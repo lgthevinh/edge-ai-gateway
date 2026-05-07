@@ -1,7 +1,7 @@
 import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signal, ViewChild } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { AgentChatService } from '../../services/agent-chat.service';
-import { ChatMessage, ChatStatus } from '../../services/chat.models';
+import { ChatMessage, ChatStatus, ResponseUsage } from '../../services/chat.models';
 import { SessionStoreService } from '../../services/session-store.service';
 import { MarkdownService } from '../../middleware/markdown.service';
 
@@ -24,6 +24,7 @@ export class ChatShell {
   readonly sessionInput = signal(this.sessionStore.activeSessionId());
   readonly status = signal<ChatStatus>('idle');
   readonly isBusy = computed(() => this.status() !== 'idle');
+  readonly activeUsage = this.sessionStore.activeUsage;
 
   private activeSource: EventSource | null = null;
 
@@ -40,6 +41,13 @@ export class ChatShell {
     queueMicrotask(() => this.focusInput());
   }
 
+  deleteActiveSession(): void {
+    if (this.isBusy()) return;
+    const nextId = this.sessionStore.deleteSession(this.sessionStore.activeSessionId());
+    this.sessionInput.set(nextId);
+    queueMicrotask(() => this.focusInput());
+  }
+
   applySessionInput(): void {
     this.selectSession(this.sessionInput());
   }
@@ -49,6 +57,7 @@ export class ChatShell {
     if (!text || this.isBusy()) return;
 
     const sessionId = this.sessionStore.activeSessionId() || this.sessionStore.createSession();
+    const history = this.sessionStore.getHistoryForRequest();
     this.sessionInput.set(sessionId);
     this.input.set('');
     this.resizeInput();
@@ -62,7 +71,7 @@ export class ChatShell {
     let tokenBuffer = '';
     let finalBuffer = '';
 
-    this.activeSource = this.agentChat.stream(sessionId, text, {
+    this.activeSource = this.agentChat.stream(sessionId, text, history, {
       turn: (tools) => {
         this.sessionStore.updateMessage(assistant.id, { tools: [...this.findMessage(assistant.id).tools, tools] });
         this.status.set('thinking');
@@ -74,8 +83,9 @@ export class ChatShell {
         this.status.set('streaming');
         queueMicrotask(() => this.scrollToBottom());
       },
-      final: (text) => {
+      final: (text, usage) => {
         finalBuffer = text;
+        if (usage) this.sessionStore.updateMessage(assistant.id, { usage });
       },
       done: () => {
         this.sessionStore.updateMessage(assistant.id, { content: finalBuffer || tokenBuffer, streaming: false });
@@ -107,6 +117,11 @@ export class ChatShell {
 
   trackMessage(_index: number, message: ChatMessage): string {
     return message.id;
+  }
+
+  formatUsage(usage: ResponseUsage | undefined): string {
+    if (!usage) return '';
+    return `${usage.totalTokens} total · ${usage.promptTokens} in · ${usage.completionTokens} out`;
   }
 
   private createMessage(role: ChatMessage['role'], content: string, streaming: boolean): ChatMessage {
