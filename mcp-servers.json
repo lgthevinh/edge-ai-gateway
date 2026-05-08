@@ -9,7 +9,7 @@
         "@modelcontextprotocol/server-filesystem",
         "/data/"
       ]
-    },
+    }
 //    {
 //      "name": "mcp-server-rogo",
 //      "type": "sse",
