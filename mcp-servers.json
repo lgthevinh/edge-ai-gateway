@@ -10,14 +10,14 @@
         "/data/"
       ]
     },
-    {
-      "name": "mcp-server-rogo",
-      "type": "sse",
-      "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
-      "endpoint": "/",
-      "headers": {
-        "Authorization": "Bearer ${ROGO_MCP_TOKEN}"
-      }
-    }
+//    {
+//      "name": "mcp-server-rogo",
+//      "type": "sse",
+//      "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
+//      "endpoint": "/",
+//      "headers": {
+//        "Authorization": "Bearer ${ROGO_MCP_TOKEN}"
+//      }
+//    }
   ]
 }
