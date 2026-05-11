@@ -42,6 +42,10 @@ public class McpServerConnection implements Closeable {
      * @param args    arguments to pass to the executable
      */
     public static McpServerConnection connectStdio(String name, String command, List<String> args) {
+        return connectStdio(name, command, args, inferFilesystemDefaultPath(command, args));
+    }
+
+    public static McpServerConnection connectStdio(String name, String command, List<String> args, String defaultPath) {
         ServerParameters params = ServerParameters.builder(command)
                 .args(args)
                 .build();
@@ -49,7 +53,7 @@ public class McpServerConnection implements Closeable {
         // StdioClientTransport takes ServerParameters and our Gson-backed mapper
         StdioClientTransport transport = new StdioClientTransport(params, new McpGsonJsonMapper());
 
-        return buildMcpClient(name, transport);
+        return buildMcpClient(name, transport, defaultPath);
     }
 
     public static McpServerConnection connectHttp(String name, String url, String endpoint, Map<String, String> headers) {
@@ -64,7 +68,7 @@ public class McpServerConnection implements Closeable {
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
 
-        return buildMcpClient(name, transport);
+        return buildMcpClient(name, transport, null);
     }
 
     public static McpServerConnection connectSse(String name, String url, String endpoint, Map<String, String> headers) {
@@ -79,7 +83,7 @@ public class McpServerConnection implements Closeable {
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
 
-        return buildMcpClient(name, transport);
+        return buildMcpClient(name, transport, null);
     }
 
     public String getName()                     { return name; }
@@ -95,7 +99,7 @@ public class McpServerConnection implements Closeable {
         }
     }
 
-    private static McpServerConnection buildMcpClient(String name, McpClientTransport transport) {
+    private static McpServerConnection buildMcpClient(String name, McpClientTransport transport, String defaultPath) {
         McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("edge-ai-gateway", "1.0"))
                 .jsonSchemaValidator(new McpGsonJsonSchemaValidatorSupplier().get())
@@ -104,12 +108,35 @@ public class McpServerConnection implements Closeable {
         client.initialize();
         List<McpSchema.Tool> tools = client.listTools().tools();
         List<McpToolAdapter> adapters = tools.stream()
-                .map(t -> new McpToolAdapter(client, t))
+                .map(t -> new McpToolAdapter(client, t, defaultPath))
                 .toList();
 
         ILog.d(TAG, "Connected MCP server '" + name + "' — " + tools.size() + " tool(s): "
                 + tools.stream().map(McpSchema.Tool::name).toList());
 
         return new McpServerConnection(name, client, adapters);
+    }
+
+    static String inferFilesystemDefaultPath(String command, List<String> args) {
+        boolean filesystemServer = command != null && command.contains("server-filesystem");
+        int packageIndex = -1;
+        for (int i = 0; args != null && i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg != null && arg.contains("server-filesystem")) {
+                filesystemServer = true;
+                packageIndex = i;
+                break;
+            }
+        }
+        if (!filesystemServer || args == null) return null;
+
+        int start = packageIndex >= 0 ? packageIndex + 1 : 0;
+        for (int i = start; i < args.size(); i++) {
+            String arg = args.get(i);
+            if (arg != null && !arg.isBlank() && !arg.startsWith("-")) {
+                return arg;
+            }
+        }
+        return null;
     }
 }

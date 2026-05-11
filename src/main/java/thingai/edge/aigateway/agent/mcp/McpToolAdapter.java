@@ -10,6 +10,7 @@ import thingai.edge.aigateway.agent.IAgentTool;
 
 import java.io.PrintWriter;
 import java.io.StringWriter;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -23,11 +24,17 @@ public class McpToolAdapter implements IAgentTool {
 
     private final McpSyncClient client;
     private final McpSchema.Tool tool;
+    private final String defaultPath;
     private final Gson gson = new Gson();
 
     public McpToolAdapter(McpSyncClient client, McpSchema.Tool tool) {
+        this(client, tool, null);
+    }
+
+    public McpToolAdapter(McpSyncClient client, McpSchema.Tool tool, String defaultPath) {
         this.client = client;
         this.tool = tool;
+        this.defaultPath = defaultPath;
     }
 
     @Override
@@ -78,11 +85,16 @@ public class McpToolAdapter implements IAgentTool {
     public String execute(String paramsJson) {
         ILog.d(TAG, "execute", "call_start tool='" + tool.name() + "', params=" + paramsJson);
         try {
-            Map<String, Object> args = gson.fromJson(
-                    paramsJson,
-                    new TypeToken<Map<String, Object>>() {}.getType()
-            );
+            Map<String, Object> args = normalizeArguments(tool.name(), paramsJson, defaultPath);
             ILog.d(TAG, "execute", "args_parsed tool='" + tool.name() + "', args=" + gson.toJson(args));
+
+            String validationError = validateRequiredArguments(tool.name(), args, defaultPath);
+            if (validationError != null) {
+                JsonObject error = new JsonObject();
+                error.addProperty("error", validationError);
+                ILog.d(TAG, "execute", "return_validation_error tool='" + tool.name() + "', error=" + error);
+                return gson.toJson(error);
+            }
 
             McpSchema.CallToolResult result = client.callTool(
                     new McpSchema.CallToolRequest(tool.name(), args)
@@ -97,7 +109,7 @@ public class McpToolAdapter implements IAgentTool {
             // Check for server-side error flag
             if (Boolean.TRUE.equals(result.isError())) {
                 JsonObject error = new JsonObject();
-                error.addProperty("error", extractText(result.content()));
+                error.addProperty("error", cleanMcpError(extractText(result.content())));
                 ILog.d(TAG, "execute", "return_error tool='" + tool.name() + "', error=" + error);
                 return gson.toJson(error);
             }
@@ -116,6 +128,66 @@ public class McpToolAdapter implements IAgentTool {
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────
+
+    static Map<String, Object> normalizeArguments(String toolName, String paramsJson, String defaultPath) {
+        Map<String, Object> args = parseArguments(paramsJson);
+        if (isDirectoryEnumerationTool(toolName) && isBlank(asString(args.get("path"))) && !isBlank(defaultPath)) {
+            args.put("path", defaultPath);
+        }
+        return args;
+    }
+
+    static String validateRequiredArguments(String toolName, Map<String, Object> args, String defaultPath) {
+        if (requiresPath(toolName) && isBlank(asString(args.get("path")))) {
+            if (isDirectoryEnumerationTool(toolName) && isBlank(defaultPath)) {
+                return "Missing required argument 'path'. Retry with a concrete directory path.";
+            }
+            return "Missing required argument 'path'. Retry with a concrete file or directory path.";
+        }
+        return null;
+    }
+
+    private static Map<String, Object> parseArguments(String paramsJson) {
+        if (isBlank(paramsJson)) return new HashMap<>();
+        Map<String, Object> parsed = new Gson().fromJson(
+                paramsJson,
+                new TypeToken<Map<String, Object>>() {}.getType()
+        );
+        return parsed != null ? new HashMap<>(parsed) : new HashMap<>();
+    }
+
+    private static boolean isDirectoryEnumerationTool(String toolName) {
+        return "list_directory".equals(toolName)
+                || "list_directory_with_sizes".equals(toolName)
+                || "directory_tree".equals(toolName);
+    }
+
+    private static boolean requiresPath(String toolName) {
+        return isDirectoryEnumerationTool(toolName)
+                || "read_text_file".equals(toolName)
+                || "read_file".equals(toolName)
+                || "read_media_file".equals(toolName)
+                || "get_file_info".equals(toolName)
+                || "write_file".equals(toolName)
+                || "edit_file".equals(toolName)
+                || "create_directory".equals(toolName);
+    }
+
+    private static String asString(Object value) {
+        return value instanceof String string ? string : null;
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private static String cleanMcpError(String text) {
+        if (isBlank(text)) return "MCP tool returned an error.";
+        if (text.contains("Invalid arguments")) {
+            return "MCP tool received invalid arguments. Retry with all required fields from the tool schema.";
+        }
+        return text;
+    }
 
     private String extractText(List<McpSchema.Content> content) {
         if (content == null || content.isEmpty()) return "";

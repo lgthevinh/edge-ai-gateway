@@ -5,6 +5,8 @@ import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.content.Content;
 import thingai.edge.aigateway.llm.message.Message;
 import thingai.edge.aigateway.llm.message.MessageRole;
+import thingai.edge.aigateway.llm.message.ToolCall;
+import thingai.edge.aigateway.llm.message.ToolCallFunction;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.llm.response.ResponseChoice;
 import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
@@ -18,6 +20,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Map.Entry;
+import java.util.TreeMap;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
 
@@ -57,6 +61,8 @@ public class LlamaCppProvider extends LlmProvider {
         HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
         AtomicReference<ResponseUsage> usage = new AtomicReference<>();
+        AtomicReference<String> finishReason = new AtomicReference<>("stop");
+        TreeMap<Integer, StreamingToolCall> toolCalls = new TreeMap<>();
         CompletableFuture<Response> promise = new CompletableFuture<>();
 
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
@@ -68,7 +74,7 @@ public class LlamaCppProvider extends LlmProvider {
                         String text = fullText.toString();
                         ILog.d(TAG, "chatCompletionAsync", "text: " + text.trim());
                         callback.onComplete(text);
-                        promise.complete(buildResponse(text, usage.get()));
+                        promise.complete(buildResponse(text, finishReason.get(), usage.get(), toToolCalls(toolCalls)));
                         return;
                     }
 
@@ -80,13 +86,19 @@ public class LlamaCppProvider extends LlmProvider {
                             callback.onUsage(responseUsage);
                         }
                         if (!obj.has("choices") || obj.getAsJsonArray("choices").isEmpty()) return;
-                        var delta = obj.getAsJsonArray("choices")
-                                .get(0).getAsJsonObject()
-                                .getAsJsonObject("delta");
+                        JsonObject choice = obj.getAsJsonArray("choices").get(0).getAsJsonObject();
+                        if (choice.has("finish_reason") && !choice.get("finish_reason").isJsonNull()) {
+                            finishReason.set(choice.get("finish_reason").getAsString());
+                        }
+                        if (!choice.has("delta") || !choice.get("delta").isJsonObject()) return;
+                        JsonObject delta = choice.getAsJsonObject("delta");
                         if (delta.has("content") && !delta.get("content").isJsonNull()) {
                             String token = delta.get("content").getAsString();
                             fullText.append(token);
                             callback.onToken(token);
+                        }
+                        if (delta.has("tool_calls") && delta.get("tool_calls").isJsonArray()) {
+                            mergeToolCalls(toolCalls, delta.getAsJsonArray("tool_calls"));
                         }
                     } catch (Exception e) {
                         ILog.d(TAG, "chatCompletionAsync: " + e.getMessage());
@@ -141,8 +153,55 @@ public class LlamaCppProvider extends LlmProvider {
                 .build();
     }
 
-    private Response buildResponse(String fullText, ResponseUsage usage) {
-        ResponseChoice choice = new ResponseChoice(new Message(MessageRole.MODEL, fullText), "stop");
+    private Response buildResponse(String fullText, String finishReason, ResponseUsage usage, ToolCall[] toolCalls) {
+        Message message = new Message(MessageRole.MODEL, fullText);
+        if (toolCalls != null && toolCalls.length > 0) message.setToolCalls(toolCalls);
+        ResponseChoice choice = new ResponseChoice(message, finishReason != null ? finishReason : "stop");
         return new Response(new ResponseChoice[]{choice}, usage);
+    }
+
+    private void mergeToolCalls(TreeMap<Integer, StreamingToolCall> accumulated, com.google.gson.JsonArray deltas) {
+        for (int i = 0; i < deltas.size(); i++) {
+            if (!deltas.get(i).isJsonObject()) continue;
+            JsonObject item = deltas.get(i).getAsJsonObject();
+            int index = item.has("index") && !item.get("index").isJsonNull()
+                    ? item.get("index").getAsInt()
+                    : accumulated.size();
+            StreamingToolCall call = accumulated.computeIfAbsent(index, ignored -> new StreamingToolCall());
+
+            if (item.has("id") && !item.get("id").isJsonNull()) call.id = item.get("id").getAsString();
+            if (item.has("type") && !item.get("type").isJsonNull()) call.type = item.get("type").getAsString();
+            if (item.has("function") && item.get("function").isJsonObject()) {
+                JsonObject function = item.getAsJsonObject("function");
+                if (function.has("name") && !function.get("name").isJsonNull()) {
+                    call.name = function.get("name").getAsString();
+                }
+                if (function.has("arguments") && !function.get("arguments").isJsonNull()) {
+                    call.arguments.append(function.get("arguments").getAsString());
+                }
+            }
+        }
+    }
+
+    private ToolCall[] toToolCalls(TreeMap<Integer, StreamingToolCall> accumulated) {
+        if (accumulated.isEmpty()) return null;
+        ToolCall[] result = new ToolCall[accumulated.size()];
+        int i = 0;
+        for (Entry<Integer, StreamingToolCall> entry : accumulated.entrySet()) {
+            StreamingToolCall call = entry.getValue();
+            result[i++] = new ToolCall(
+                    call.id,
+                    call.type != null ? call.type : "function",
+                    new ToolCallFunction(call.name, call.arguments.toString())
+            );
+        }
+        return result;
+    }
+
+    private static class StreamingToolCall {
+        private String id;
+        private String type;
+        private String name;
+        private final StringBuilder arguments = new StringBuilder();
     }
 }

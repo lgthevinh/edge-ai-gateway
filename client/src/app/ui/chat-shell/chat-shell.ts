@@ -93,7 +93,7 @@ export class ChatShell {
     let tokenBuffer = '';
     let finalBuffer = '';
 
-    this.activeSource = this.agentChat.stream(sessionId, text, history, {
+    void this.agentChat.stream(sessionId, text, history, {
       turn: (tools) => {
         this.sessionStore.updateMessage(assistant.id, { tools: [...this.findMessage(assistant.id).tools, tools] });
         this.status.set('thinking');
@@ -121,6 +121,8 @@ export class ChatShell {
         this.status.set('idle');
         this.activeSource = null;
       }
+    }).then((source) => {
+      this.activeSource = source;
     });
   }
 

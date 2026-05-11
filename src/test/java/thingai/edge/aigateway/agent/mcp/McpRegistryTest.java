@@ -141,6 +141,26 @@ class McpRegistryTest {
         assertEquals(0, registry.calls.size());
     }
 
+    @Test
+    void inferFilesystemDefaultPathUsesFirstAllowedRootAfterPackageName() {
+        String path = McpServerConnection.inferFilesystemDefaultPath(
+                "npx",
+                List.of("-y", "@modelcontextprotocol/server-filesystem", "/data/projects/edge-ai-gateway/")
+        );
+
+        assertEquals("/data/projects/edge-ai-gateway/", path);
+    }
+
+    @Test
+    void inferFilesystemDefaultPathReturnsNullForNonFilesystemServer() {
+        String path = McpServerConnection.inferFilesystemDefaultPath(
+                "npx",
+                List.of("-y", "@example/other-server", "/data/projects/edge-ai-gateway/")
+        );
+
+        assertEquals(null, path);
+    }
+
     private Path writeConfig(String json) throws IOException {
         Path config = tempDir.resolve("mcp-servers.json");
         Files.writeString(config, json);

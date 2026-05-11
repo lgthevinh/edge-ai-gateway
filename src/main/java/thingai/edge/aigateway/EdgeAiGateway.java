@@ -9,6 +9,7 @@ import thingai.edge.aigateway.agent.AgentOrchestrator;
 import thingai.edge.aigateway.agent.IAgentTool;
 import thingai.edge.aigateway.agent.mcp.McpRegistry;
 import thingai.edge.aigateway.agent.preset.AssistantAgent;
+import thingai.edge.aigateway.agent.tools.CurlApiTool;
 import thingai.edge.aigateway.agent.tools.ListDocumentsTool;
 import thingai.edge.aigateway.agent.tools.ReadDocumentTool;
 import thingai.edge.aigateway.knowledgebase.DocumentImportResult;
@@ -78,8 +79,9 @@ public class EdgeAiGateway extends Service {
 
         llamaCppProvider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
         IAgentTool[] documentTools = new IAgentTool[] {
-                new ListDocumentsTool(knowledgeDocumentService),
-                new ReadDocumentTool(knowledgeDocumentService)
+//                new ListDocumentsTool(knowledgeDocumentService),
+//                new ReadDocumentTool(knowledgeDocumentService)
+                new CurlApiTool()
         };
         IAgentTool[] extraTools = ArrayUtils.concat(documentTools, mcpRegistry.getAllTools());
         agentOrchestrator = new AgentOrchestrator(

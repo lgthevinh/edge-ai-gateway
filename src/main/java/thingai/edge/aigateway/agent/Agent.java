@@ -63,9 +63,16 @@ public class Agent {
      * Returns a future that completes with the full accumulated text.
      */
     public CompletableFuture<String> callStream(Message[] messages, ResponseStreamCallback callback) {
+        return callStreamResponse(messages, callback).thenApply(Response::getMessageContent);
+    }
+
+    /**
+     * Single streaming LLM call. Returns the structured response so the
+     * orchestrator can inspect finish_reason and tool calls without a second pass.
+     */
+    public CompletableFuture<Response> callStreamResponse(Message[] messages, ResponseStreamCallback callback) {
         Content content = buildContent(messages);
-        CompletableFuture<String> result = new CompletableFuture<>();
-        llmProvider.chatCompletionAsync(content, new ResponseStreamCallback() {
+        return llmProvider.chatCompletionAsync(content, new ResponseStreamCallback() {
             @Override
             public void onToken(String token) {
                 callback.onToken(token);
@@ -74,13 +81,11 @@ public class Agent {
             @Override
             public void onComplete(String fullText) {
                 callback.onComplete(fullText);
-                result.complete(fullText);
             }
 
             @Override
             public void onError(Exception e) {
                 callback.onError(e);
-                result.completeExceptionally(e);
             }
 
             @Override
@@ -88,7 +93,6 @@ public class Agent {
                 callback.onUsage(usage);
             }
         });
-        return result;
     }
 
     /**

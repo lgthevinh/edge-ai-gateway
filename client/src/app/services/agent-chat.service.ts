@@ -7,15 +7,20 @@ export class AgentChatService {
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
 
-  stream(sessionId: string, message: string, history: AgentHistoryMessage[], handlers: AgentStreamHandlers): EventSource | null {
+  async stream(sessionId: string, message: string, history: AgentHistoryMessage[], handlers: AgentStreamHandlers): Promise<EventSource | null> {
     const EventSourceCtor = this.document.defaultView?.EventSource;
     if (!EventSourceCtor) {
       handlers.error();
       return null;
     }
 
-    const body = encodeURIComponent(JSON.stringify({ session_id: sessionId, message, history }));
-    const source = new EventSourceCtor(`/api/agent/chat/stream?body=${body}`);
+    const streamId = await this.startStream(sessionId, message, history);
+    if (!streamId) {
+      handlers.error();
+      return null;
+    }
+
+    const source = new EventSourceCtor(`/api/agent/chat/stream?stream_id=${encodeURIComponent(streamId)}`);
 
     source.addEventListener('turn', (event) => {
       this.zone.run(() => handlers.turn(this.parseTools(event as MessageEvent)));
@@ -46,6 +51,23 @@ export class AgentChatService {
     });
 
     return source;
+  }
+
+  private async startStream(sessionId: string, message: string, history: AgentHistoryMessage[]): Promise<string | null> {
+    try {
+      const response = await fetch('/api/agent/chat/stream/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, message, history })
+      });
+      if (!response.ok) return null;
+      const data: unknown = await response.json();
+      if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
+      const streamId = (data as Record<string, unknown>)['stream_id'];
+      return typeof streamId === 'string' && streamId ? streamId : null;
+    } catch {
+      return null;
+    }
   }
 
   private parseTools(event: MessageEvent): string[] {

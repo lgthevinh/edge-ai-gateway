@@ -154,15 +154,31 @@ public class AgentOrchestrator {
     // -------------------------------------------------------------------------
 
     /**
-     * Runs the turn loop for a single agent. Tool-using turns are blocking.
-     * The final answer turn streams tokens through the callback (if provided).
+     * Runs the turn loop for a single agent. When a callback is present each
+     * LLM turn streams, and the structured stream result decides whether tools run.
      */
     private String runTurnLoop(Agent agent, Message[] messages, AgentChainCallback callback) {
         int turn = 0;
         Message[] current = messages;
 
         while (turn < maxTurns) {
-            Response response = agent.call(current);
+            Response response;
+            if (callback != null) {
+                Message[] streamedMessages = current;
+                try {
+                    response = agent.callStreamResponse(streamedMessages, new ResponseStreamCallback() {
+                        @Override public void onToken(String token) { callback.onToken(token); }
+                        @Override public void onComplete(String fullText) { /* final event is emitted by runChain */ }
+                        @Override public void onError(Exception e) { callback.onError(e); }
+                        @Override public void onUsage(thingai.edge.aigateway.llm.response.ResponseUsage usage) { callback.onUsage(usage); }
+                    }).join();
+                } catch (Exception e) {
+                    ILog.d(TAG, "Streaming failed: " + e.getMessage());
+                    response = agent.call(current);
+                }
+            } else {
+                response = agent.call(current);
+            }
 
             if (response == null) {
                 Exception e = new Exception("LLM returned null on turn " + turn);
@@ -182,25 +198,8 @@ public class AgentOrchestrator {
             }
 
             // Agent decided to stop — deliver final answer
-            if (callback != null) {
-                if (response.getUsage() != null) callback.onUsage(response.getUsage());
-                // Stream the final answer for a better UX
-                Message[] finalMessages = current;
-                try {
-                    return agent.callStream(finalMessages, new ResponseStreamCallback() {
-                        @Override public void onToken(String token) { callback.onToken(token); }
-                        @Override public void onComplete(String fullText) { /* handled by future */ }
-                        @Override public void onError(Exception e) { callback.onError(e); }
-                        @Override public void onUsage(thingai.edge.aigateway.llm.response.ResponseUsage usage) { callback.onUsage(usage); }
-                    }).join();
-                } catch (Exception e) {
-                    // Fallback: deliver blocking result
-                    ILog.d(TAG, "Streaming fallback to blocking: " + e.getMessage());
-                    return response.getMessageContent();
-                }
-            } else {
-                return response.getMessageContent();
-            }
+            if (callback != null && response.getUsage() != null) callback.onUsage(response.getUsage());
+            return response.getMessageContent();
         }
 
         // Safety cap reached
