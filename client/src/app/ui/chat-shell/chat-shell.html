@@ -1,6 +1,6 @@
 <div class="app-shell">
   <nav>
-    <div class="logo">Edge AI <span>Gateway</span></div>
+    <div class="logo">ThingEdu <span>Agent</span></div>
 
     <section class="session-section" aria-label="Session controls">
       <label class="session-label" for="session-id">Session</label>
@@ -57,7 +57,7 @@
 
   <main class="conv-main">
     <div class="chat-toolbar">
-      <span class="chat-toolbar-title">Assistant</span>
+      <span class="chat-toolbar-title">ThingEdu Agent</span>
       <div class="toolbar-spacer"></div>
       <span class="status-pill" [class.idle]="status() === 'idle'" [class.thinking]="status() === 'thinking'" [class.streaming]="status() === 'streaming'">{{ status() === 'idle' ? 'Ready' : status() === 'thinking' ? 'Thinking...' : 'Streaming...' }}</span>
     </div>
@@ -65,8 +65,8 @@
     <div class="chat-box" #chatBox>
       @if (sessionStore.messages().length === 0) {
         <div class="chat-empty">
-          <strong>Edge AI Gateway</strong>
-          Ask anything - I can read files, browse directories, and call APIs.
+          <strong>ThingEdu Agent</strong>
+          Ask anything - I can read documents, notes, slides, and local materials.
         </div>
       }
 
