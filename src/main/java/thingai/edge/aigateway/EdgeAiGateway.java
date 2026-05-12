@@ -79,8 +79,8 @@ public class EdgeAiGateway extends Service {
 
         llamaCppProvider = new LlamaCppProvider(llamaServerUrl, apiKey, model);
         IAgentTool[] documentTools = new IAgentTool[] {
-//                new ListDocumentsTool(knowledgeDocumentService),
-//                new ReadDocumentTool(knowledgeDocumentService),
+                new ListDocumentsTool(knowledgeDocumentService),
+                new ReadDocumentTool(knowledgeDocumentService),
                 new CurlApiTool()
         };
         IAgentTool[] extraTools = ArrayUtils.concat(documentTools, mcpRegistry.getAllTools());
