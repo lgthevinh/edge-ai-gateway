@@ -36,7 +36,63 @@ public class RouteDocuments implements EndpointGroup {
                 ctx.json(JsonUtil.toJson(importResult));
             });
 
+            post("/search", ctx -> {
+                try {
+                    JsonObject body = JsonUtil.fromJson(ctx.body(), JsonObject.class);
+                    if (body == null || !body.has("query")) {
+                        ctx.status(400).result("{\"error\":\"query is required\"}");
+                        return;
+                    }
+
+                    String query = body.get("query").getAsString();
+                    int topK = body.has("top_k") ? body.get("top_k").getAsInt() : 5;
+                    JsonArray documents = new JsonArray();
+                    for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().searchDocuments(query, topK)) {
+                        JsonObject item = new JsonObject();
+                        item.addProperty("title", document.title);
+                        item.addProperty("description", document.description);
+                        item.addProperty("updated_at", document.updatedAt);
+                        documents.add(item);
+                    }
+
+                    JsonObject result = new JsonObject();
+                    result.addProperty("query", query);
+                    result.add("documents", documents);
+                    ctx.json(JsonUtil.toJson(result));
+                } catch (Exception e) {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", e.getMessage());
+                    ctx.status(500).json(JsonUtil.toJson(error));
+                }
+            });
+
             post("/upload", ctx -> {
+                try {
+                    JsonObject body = JsonUtil.fromJson(ctx.body(), JsonObject.class);
+                    if (body == null || !body.has("title") || !body.has("description") || !body.has("content")) {
+                        ctx.status(400).result("{\"error\":\"title, description, and content are required\"}");
+                        return;
+                    }
+
+                    KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().saveDocument(
+                            body.get("title").getAsString(),
+                            body.get("description").getAsString(),
+                            body.get("content").getAsString()
+                    );
+
+                    JsonObject result = new JsonObject();
+                    result.addProperty("title", document.title);
+                    result.addProperty("description", document.description);
+                    result.addProperty("updated_at", document.updatedAt);
+                    ctx.json(JsonUtil.toJson(result));
+                } catch (Exception e) {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", e.getMessage());
+                    ctx.status(500).json(JsonUtil.toJson(error));
+                }
+            });
+
+            post(ctx -> {
                 try {
                     JsonObject body = JsonUtil.fromJson(ctx.body(), JsonObject.class);
                     if (body == null || !body.has("title") || !body.has("description") || !body.has("content")) {

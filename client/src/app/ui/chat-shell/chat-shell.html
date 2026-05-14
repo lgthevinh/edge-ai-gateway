@@ -43,13 +43,36 @@
         </div>
       </div>
 
-      <div class="upload-panel">
-        <label class="upload-button" [class.disabled]="isBusy() || isUploading()">
-          <input type="file" accept=".md,.markdown,.txt,text/markdown,text/plain" (change)="uploadDocument($event)" [disabled]="isBusy() || isUploading()">
-          <span>{{ isUploading() ? 'Uploading...' : 'Upload document' }}</span>
-        </label>
-        @if (uploadStatus()) {
-          <div class="upload-status">{{ uploadStatus() }}</div>
+      <div class="knowledge-panel">
+        <label class="session-label" for="knowledge-search">Knowledge</label>
+        <button class="knowledge-button" type="button" (click)="openKnowledgeDialog()" [disabled]="isBusy() || isKnowledgeBusy()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span>Add knowledge base</span>
+        </button>
+
+        <div class="knowledge-search-row">
+          <input
+            id="knowledge-search"
+            type="text"
+            placeholder="Semantic search"
+            [ngModel]="knowledgeQuery()"
+            (ngModelChange)="knowledgeQuery.set($event)"
+            (keydown.enter)="searchKnowledge()"
+            [disabled]="isBusy() || isKnowledgeBusy()"
+          >
+          <button class="knowledge-icon-button" type="button" (click)="searchKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeQuery().trim()" title="Search knowledge" aria-label="Search knowledge">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+          </button>
+        </div>
+        @if (knowledgeStatus()) {
+          <div class="knowledge-status">{{ knowledgeStatus() }}</div>
+        }
+        @if (knowledgeResults().length > 0) {
+          <div class="knowledge-results">
+            @for (result of knowledgeResults(); track result) {
+              <div class="knowledge-result">{{ result }}</div>
+            }
+          </div>
         }
       </div>
     </section>
@@ -132,4 +155,57 @@
       <div class="chat-input-hint">Enter to send · Shift+Enter for newline</div>
     </div>
   </main>
+
+  @if (isKnowledgeDialogOpen()) {
+    <div class="dialog-backdrop" role="presentation" (click)="closeKnowledgeDialog()"></div>
+    <section class="knowledge-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-dialog-title" (keydown)="onKnowledgeDialogKeydown($event)">
+      <div class="dialog-header">
+        <h2 id="knowledge-dialog-title">Add / update knowledge base</h2>
+        <button class="dialog-close" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge()" title="Close" aria-label="Close dialog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="dialog-body">
+        <label class="dialog-label" for="dialog-knowledge-title">Title</label>
+        <input
+          #knowledgeTitleInput
+          id="dialog-knowledge-title"
+          type="text"
+          placeholder="Document title"
+          [ngModel]="knowledgeTitle()"
+          (ngModelChange)="knowledgeTitle.set($event)"
+          [disabled]="isSavingKnowledge()"
+        >
+
+        <label class="dialog-label" for="dialog-knowledge-description">Description</label>
+        <input
+          id="dialog-knowledge-description"
+          type="text"
+          placeholder="Short description"
+          [ngModel]="knowledgeDescription()"
+          (ngModelChange)="knowledgeDescription.set($event)"
+          [disabled]="isSavingKnowledge()"
+        >
+
+        <label class="dialog-label" for="dialog-knowledge-content">Content</label>
+        <textarea
+          id="dialog-knowledge-content"
+          class="dialog-textarea"
+          placeholder="Knowledge content"
+          rows="10"
+          [ngModel]="knowledgeContent()"
+          (ngModelChange)="knowledgeContent.set($event)"
+          [disabled]="isSavingKnowledge()"
+        ></textarea>
+      </div>
+
+      <div class="dialog-actions">
+        <button class="dialog-secondary" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge()">Cancel</button>
+        <button class="dialog-primary" type="button" (click)="saveKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeTitle().trim() || !knowledgeDescription().trim() || !knowledgeContent().trim()">
+          {{ isSavingKnowledge() ? 'Saving...' : 'Save' }}
+        </button>
+      </div>
+    </section>
+  }
 </div>

@@ -13,6 +13,7 @@ import thingai.edge.aigateway.agent.preset.AssistantAgent;
 import thingai.edge.aigateway.agent.tools.CurlApiTool;
 import thingai.edge.aigateway.agent.tools.ListDocumentsTool;
 import thingai.edge.aigateway.agent.tools.ReadDocumentTool;
+import thingai.edge.aigateway.agent.tools.SearchDocumentsTool;
 import thingai.edge.aigateway.handler.embedding.EmbeddingHandler;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
@@ -95,6 +96,7 @@ public class EdgeAiGateway extends Service {
         mcpRegistry = new McpRegistry();
         mcpRegistry.loadConfig("mcp-servers.json");
         IAgentTool[] documentTools = new IAgentTool[] {
+                new SearchDocumentsTool(knowledgeHandler),
                 new ListDocumentsTool(knowledgeHandler),
                 new ReadDocumentTool(knowledgeHandler),
                 new CurlApiTool()

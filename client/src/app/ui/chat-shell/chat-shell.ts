@@ -21,14 +21,23 @@ export class ChatShell {
 
   @ViewChild('chatBox') private chatBox?: ElementRef<HTMLElement>;
   @ViewChild('inputBox') private inputBox?: ElementRef<HTMLTextAreaElement>;
+  @ViewChild('knowledgeTitleInput') private knowledgeTitleInput?: ElementRef<HTMLInputElement>;
 
   readonly input = signal('');
   readonly sessionInput = signal(this.sessionStore.activeSessionId());
   readonly status = signal<ChatStatus>('idle');
   readonly isBusy = computed(() => this.status() !== 'idle');
   readonly activeUsage = this.sessionStore.activeUsage;
-  readonly uploadStatus = signal('');
-  readonly isUploading = signal(false);
+  readonly knowledgeTitle = signal('');
+  readonly knowledgeDescription = signal('');
+  readonly knowledgeContent = signal('');
+  readonly knowledgeQuery = signal('');
+  readonly knowledgeStatus = signal('');
+  readonly knowledgeResults = signal<string[]>([]);
+  readonly isSavingKnowledge = signal(false);
+  readonly isSearchingKnowledge = signal(false);
+  readonly isKnowledgeDialogOpen = signal(false);
+  readonly isKnowledgeBusy = computed(() => this.isSavingKnowledge() || this.isSearchingKnowledge());
 
   private activeSource: EventSource | null = null;
 
@@ -56,27 +65,60 @@ export class ChatShell {
     this.selectSession(this.sessionInput());
   }
 
-  async uploadDocument(event: Event): Promise<void> {
-    const input = event.target as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = '';
-    if (!file || this.isBusy() || this.isUploading()) return;
+  openKnowledgeDialog(): void {
+    if (this.isBusy() || this.isKnowledgeBusy()) return;
+    this.isKnowledgeDialogOpen.set(true);
+    queueMicrotask(() => this.knowledgeTitleInput?.nativeElement.focus());
+  }
 
-    this.isUploading.set(true);
-    this.uploadStatus.set(`Uploading ${file.name}...`);
+  closeKnowledgeDialog(): void {
+    if (this.isSavingKnowledge()) return;
+    this.isKnowledgeDialogOpen.set(false);
+  }
+
+  async saveKnowledge(): Promise<void> {
+    const title = this.knowledgeTitle().trim();
+    const description = this.knowledgeDescription().trim();
+    const content = this.knowledgeContent().trim();
+    if (!title || !description || !content || this.isBusy() || this.isKnowledgeBusy()) return;
+
+    this.isSavingKnowledge.set(true);
+    this.knowledgeStatus.set(`Saving ${title}...`);
     try {
-      const document = await this.documentService.uploadTextFile(file);
-      this.uploadStatus.set(`Added ${document.title || document.path}`);
+      const document = await this.documentService.saveDocument({ title, description, content });
+      this.knowledgeTitle.set('');
+      this.knowledgeDescription.set('');
+      this.knowledgeContent.set('');
+      this.knowledgeStatus.set(`Saved ${document.title}`);
+      this.isKnowledgeDialogOpen.set(false);
     } catch (error) {
-      this.uploadStatus.set(error instanceof Error ? error.message : 'Upload failed');
+      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Save failed');
     } finally {
-      this.isUploading.set(false);
+      this.isSavingKnowledge.set(false);
+    }
+  }
+
+  async searchKnowledge(): Promise<void> {
+    const query = this.knowledgeQuery().trim();
+    if (!query || this.isBusy() || this.isKnowledgeBusy()) return;
+
+    this.isSearchingKnowledge.set(true);
+    this.knowledgeStatus.set('Searching knowledge...');
+    try {
+      const result = await this.documentService.searchDocuments(query);
+      this.knowledgeResults.set(result.documents.map((document) => `${document.title} - ${document.description}`));
+      this.knowledgeStatus.set(result.documents.length > 0 ? `${result.documents.length} result(s)` : 'No matching documents');
+    } catch (error) {
+      this.knowledgeResults.set([]);
+      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Search failed');
+    } finally {
+      this.isSearchingKnowledge.set(false);
     }
   }
 
   send(): void {
     const text = this.input().trim();
-    if (!text || this.isBusy() || this.isUploading()) return;
+    if (!text || this.isBusy() || this.isKnowledgeBusy()) return;
 
     const sessionId = this.sessionStore.activeSessionId() || this.sessionStore.createSession();
     const history = this.sessionStore.getHistoryForRequest();
@@ -130,6 +172,12 @@ export class ChatShell {
     if (event.key !== 'Enter' || event.shiftKey) return;
     event.preventDefault();
     this.send();
+  }
+
+  onKnowledgeDialogKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    this.closeKnowledgeDialog();
   }
 
   resizeInput(): void {

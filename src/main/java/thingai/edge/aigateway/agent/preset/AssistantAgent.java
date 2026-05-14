@@ -46,9 +46,10 @@ public class AssistantAgent {
 
                 1. **Understand the task** — identify what information or action is needed.
                 2. **Search knowledge base first** — if the task involves documents, notes, manuals, specs, or local knowledge:
-                   a. Call `list_documents` to discover what is available.
-                   b. Call `read_document` on every relevant document found. Read multiple documents if needed — do not stop at one.
-                   c. Only proceed to external tools if the local documents are insufficient.
+                   a. Call `search_documents` first for topic, vague, or natural-language questions.
+                   b. Call `list_documents` when the user asks what documents exist or when search returns nothing.
+                   c. Call `read_document` on every relevant document found. Read multiple documents if needed — do not stop at one.
+                   d. Only proceed to external tools if the local documents are insufficient.
                 3. **Use MCP / external tools** — if the knowledge base lacks the answer, use MCP tools or `curl_api` to fetch live data.
                 4. **Chain tools freely** — you may call tools in any order, as many times as needed within a single turn. Do not wait for user confirmation between steps.
                 5. **Synthesize and answer** — once you have enough evidence, produce a complete, well-structured answer. Never fabricate; if evidence is still missing after trying all relevant tools, say so clearly.

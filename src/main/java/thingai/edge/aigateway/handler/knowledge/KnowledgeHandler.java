@@ -3,6 +3,7 @@ package thingai.edge.aigateway.handler.knowledge;
 import org.thingai.base.dao.Dao;
 import org.thingai.base.log.ILog;
 import org.thingai.sdk.ai.vector.dao.DaoVectorSqlite;
+import org.thingai.sdk.ai.vector.define.VectorSearchResult;
 import thingai.edge.aigateway.handler.embedding.EmbeddingHandler;
 
 import java.util.Arrays;
@@ -88,16 +89,26 @@ public class KnowledgeHandler {
             if (queryEmbedding == null || queryEmbedding.length == 0) {
                 return new KnowledgeDocument[0];
             }
-            KnowledgeDocument[] documents = vectorDao.searchVectors(
+            VectorSearchResult<KnowledgeDocument>[] results = vectorDao.searchVectors(
                     KnowledgeDocument.class,
+                    "embedding",
                     queryEmbedding,
                     Math.max(1, topK)
             );
-            return documents != null ? documents : new KnowledgeDocument[0];
+            if (results.length == 0) {
+                return new KnowledgeDocument[0];
+            }
+            KnowledgeDocument[] documents = new KnowledgeDocument[results.length];
+            for  (int i = 0; i < results.length; i++) {
+                KnowledgeDocument document = results[i].getEntity();
+                documents[i] = document;
+            }
+            return documents;
         } catch (UnsupportedOperationException e) {
             ILog.d(TAG, "semanticSearch unsupported by vector DAO: " + e.getMessage());
             return new KnowledgeDocument[0];
         } catch (Exception e) {
+            e.printStackTrace();
             ILog.d(TAG, "semanticSearch failed: " + e.getMessage());
             return new KnowledgeDocument[0];
         }
