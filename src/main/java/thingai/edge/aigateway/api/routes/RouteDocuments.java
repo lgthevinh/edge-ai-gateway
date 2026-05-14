@@ -8,6 +8,7 @@ import thingai.edge.aigateway.handler.knowledge.DocumentImportResult;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
 import thingai.edge.aigateway.utils.JsonUtil;
 
+import static io.javalin.apibuilder.ApiBuilder.delete;
 import static io.javalin.apibuilder.ApiBuilder.get;
 import static io.javalin.apibuilder.ApiBuilder.path;
 import static io.javalin.apibuilder.ApiBuilder.post;
@@ -19,16 +20,40 @@ public class RouteDocuments implements EndpointGroup {
             get(ctx -> {
                 JsonArray documents = new JsonArray();
                 for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().listDocuments()) {
-                    JsonObject item = new JsonObject();
-                    item.addProperty("title", document.title);
-                    item.addProperty("description", document.description);
-                    item.addProperty("updated_at", document.updatedAt);
-                    documents.add(item);
+                    documents.add(toSummaryJson(document));
                 }
 
                 JsonObject result = new JsonObject();
                 result.add("documents", documents);
                 ctx.json(JsonUtil.toJson(result));
+            });
+
+            get("/{title}", ctx -> {
+                KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().getDocument(ctx.pathParam("title"));
+                if (document == null) {
+                    ctx.status(404).result("{\"error\":\"document not found\"}");
+                    return;
+                }
+                ctx.json(JsonUtil.toJson(toDetailJson(document)));
+            });
+
+            delete("/{title}", ctx -> {
+                try {
+                    boolean deleted = EdgeAiGateway.getKnowledgeHandler().deleteDocument(ctx.pathParam("title"));
+                    if (!deleted) {
+                        ctx.status(404).result("{\"error\":\"document not found\"}");
+                        return;
+                    }
+
+                    JsonObject result = new JsonObject();
+                    result.addProperty("deleted", true);
+                    result.addProperty("title", ctx.pathParam("title"));
+                    ctx.json(JsonUtil.toJson(result));
+                } catch (Exception e) {
+                    JsonObject error = new JsonObject();
+                    error.addProperty("error", e.getMessage());
+                    ctx.status(500).json(JsonUtil.toJson(error));
+                }
             });
 
             post("/refresh", ctx -> {
@@ -48,11 +73,7 @@ public class RouteDocuments implements EndpointGroup {
                     int topK = body.has("top_k") ? body.get("top_k").getAsInt() : 5;
                     JsonArray documents = new JsonArray();
                     for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().searchDocuments(query, topK)) {
-                        JsonObject item = new JsonObject();
-                        item.addProperty("title", document.title);
-                        item.addProperty("description", document.description);
-                        item.addProperty("updated_at", document.updatedAt);
-                        documents.add(item);
+                        documents.add(toSummaryJson(document));
                     }
 
                     JsonObject result = new JsonObject();
@@ -80,11 +101,7 @@ public class RouteDocuments implements EndpointGroup {
                             body.get("content").getAsString()
                     );
 
-                    JsonObject result = new JsonObject();
-                    result.addProperty("title", document.title);
-                    result.addProperty("description", document.description);
-                    result.addProperty("updated_at", document.updatedAt);
-                    ctx.json(JsonUtil.toJson(result));
+                    ctx.json(JsonUtil.toJson(toDetailJson(document)));
                 } catch (Exception e) {
                     JsonObject error = new JsonObject();
                     error.addProperty("error", e.getMessage());
@@ -106,11 +123,7 @@ public class RouteDocuments implements EndpointGroup {
                             body.get("content").getAsString()
                     );
 
-                    JsonObject result = new JsonObject();
-                    result.addProperty("title", document.title);
-                    result.addProperty("description", document.description);
-                    result.addProperty("updated_at", document.updatedAt);
-                    ctx.json(JsonUtil.toJson(result));
+                    ctx.json(JsonUtil.toJson(toDetailJson(document)));
                 } catch (Exception e) {
                     JsonObject error = new JsonObject();
                     error.addProperty("error", e.getMessage());
@@ -118,5 +131,20 @@ public class RouteDocuments implements EndpointGroup {
                 }
             });
         });
+    }
+
+    private static JsonObject toSummaryJson(KnowledgeDocument document) {
+        JsonObject item = new JsonObject();
+        item.addProperty("title", document.title);
+        item.addProperty("description", document.description);
+        item.addProperty("updated_at", document.updatedAt);
+        return item;
+    }
+
+    private static JsonObject toDetailJson(KnowledgeDocument document) {
+        JsonObject item = toSummaryJson(document);
+        item.addProperty("content", document.content);
+        item.addProperty("created_at", document.createdAt);
+        return item;
     }
 }

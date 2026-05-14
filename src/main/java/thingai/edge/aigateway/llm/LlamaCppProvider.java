@@ -12,6 +12,7 @@ import thingai.edge.aigateway.llm.message.ToolCallFunction;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.llm.response.ResponseChoice;
 import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
+import thingai.edge.aigateway.llm.response.ResponseTimings;
 import thingai.edge.aigateway.llm.response.ResponseUsage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
@@ -50,7 +51,9 @@ public class LlamaCppProvider extends LlmProvider {
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             ILog.d(TAG, "chatCompletion", "response: " + response.body());
-            return JsonUtil.fromJson(response.body(), Response.class);
+            Response result = JsonUtil.fromJson(response.body(), Response.class);
+            applyTimings(result);
+            return result;
         } catch (Exception e) {
             ILog.d(TAG, e.getMessage());
             return null;
@@ -84,7 +87,17 @@ public class LlamaCppProvider extends LlmProvider {
                         JsonObject obj = JsonUtil.fromJson(data, JsonObject.class);
                         if (obj.has("usage") && obj.get("usage").isJsonObject()) {
                             ResponseUsage responseUsage = JsonUtil.fromJson(obj.get("usage").toString(), ResponseUsage.class);
+                            if (obj.has("timings") && obj.get("timings").isJsonObject()) {
+                                responseUsage.applyTimings(JsonUtil.fromJson(obj.get("timings").toString(), ResponseTimings.class));
+                            }
                             usage.set(responseUsage);
+                            callback.onUsage(responseUsage);
+                        } else if (obj.has("timings") && obj.get("timings").isJsonObject()) {
+                            ResponseUsage responseUsage = usage.updateAndGet(existing -> {
+                                ResponseUsage current = existing != null ? existing : new ResponseUsage();
+                                current.applyTimings(JsonUtil.fromJson(obj.get("timings").toString(), ResponseTimings.class));
+                                return current;
+                            });
                             callback.onUsage(responseUsage);
                         }
                         if (!obj.has("choices") || obj.getAsJsonArray("choices").isEmpty()) return;
@@ -191,6 +204,16 @@ public class LlamaCppProvider extends LlmProvider {
         if (toolCalls != null && toolCalls.length > 0) message.setToolCalls(toolCalls);
         ResponseChoice choice = new ResponseChoice(message, finishReason != null ? finishReason : "stop");
         return new Response(new ResponseChoice[]{choice}, usage);
+    }
+
+    private void applyTimings(Response response) {
+        if (response == null || response.getTimings() == null) return;
+        ResponseUsage usage = response.getUsage();
+        if (usage == null) {
+            usage = new ResponseUsage();
+            response.setUsage(usage);
+        }
+        usage.applyTimings(response.getTimings());
     }
 
     private void mergeToolCalls(TreeMap<Integer, StreamingToolCall> accumulated, com.google.gson.JsonArray deltas) {

@@ -7,10 +7,19 @@ export interface UploadedDocument {
   updated_at: number;
 }
 
+export interface KnowledgeDocument extends UploadedDocument {
+  content: string;
+  created_at: number;
+}
+
 export interface KnowledgeDocumentInput {
   title: string;
   description: string;
   content: string;
+}
+
+export interface DocumentListResult {
+  documents: UploadedDocument[];
 }
 
 export interface DocumentSearchResult {
@@ -22,9 +31,28 @@ export interface DocumentSearchResult {
 export class DocumentService {
   private readonly document = inject(DOCUMENT);
 
-  async saveDocument(input: KnowledgeDocumentInput): Promise<UploadedDocument> {
-    const fetchFn = this.document.defaultView?.fetch;
-    if (!fetchFn) throw new Error('Knowledge editing is only available in the browser.');
+  async listDocuments(): Promise<DocumentListResult> {
+    const fetchFn = this.getFetch('Knowledge list is only available in the browser.');
+
+    const response = await fetchFn('/api/documents');
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as DocumentListResult;
+  }
+
+  async getDocument(title: string): Promise<KnowledgeDocument> {
+    const fetchFn = this.getFetch('Knowledge reading is only available in the browser.');
+
+    const response = await fetchFn(`/api/documents/${encodeURIComponent(title)}`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as KnowledgeDocument;
+  }
+
+  async saveDocument(input: KnowledgeDocumentInput): Promise<KnowledgeDocument> {
+    const fetchFn = this.getFetch('Knowledge editing is only available in the browser.');
 
     const response = await fetchFn('/api/documents', {
       method: 'POST',
@@ -35,12 +63,23 @@ export class DocumentService {
     if (!response.ok) {
       throw new Error(await response.text());
     }
-    return await response.json() as UploadedDocument;
+    return await response.json() as KnowledgeDocument;
+  }
+
+  async deleteDocument(title: string): Promise<void> {
+    const fetchFn = this.getFetch('Knowledge deletion is only available in the browser.');
+
+    const response = await fetchFn(`/api/documents/${encodeURIComponent(title)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
   }
 
   async searchDocuments(query: string, topK = 5): Promise<DocumentSearchResult> {
-    const fetchFn = this.document.defaultView?.fetch;
-    if (!fetchFn) throw new Error('Knowledge search is only available in the browser.');
+    const fetchFn = this.getFetch('Knowledge search is only available in the browser.');
 
     const response = await fetchFn('/api/documents/search', {
       method: 'POST',
@@ -52,5 +91,15 @@ export class DocumentService {
       throw new Error(await response.text());
     }
     return await response.json() as DocumentSearchResult;
+  }
+
+  confirm(message: string): boolean {
+    return this.document.defaultView?.confirm(message) ?? false;
+  }
+
+  private getFetch(errorMessage: string): typeof fetch {
+    const fetchFn = this.document.defaultView?.fetch;
+    if (!fetchFn) throw new Error(errorMessage);
+    return fetchFn.bind(this.document.defaultView);
   }
 }

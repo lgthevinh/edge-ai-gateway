@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signa
 import { FormsModule } from '@angular/forms';
 import { AgentChatService } from '../../services/agent-chat.service';
 import { ChatMessage, ChatStatus, ResponseUsage } from '../../services/chat.models';
-import { DocumentService } from '../../services/document.service';
+import { DocumentService, UploadedDocument } from '../../services/document.service';
 import { SessionStoreService } from '../../services/session-store.service';
 import { MarkdownService } from '../../middleware/markdown.service';
 
@@ -33,11 +33,18 @@ export class ChatShell {
   readonly knowledgeContent = signal('');
   readonly knowledgeQuery = signal('');
   readonly knowledgeStatus = signal('');
-  readonly knowledgeResults = signal<string[]>([]);
+  readonly knowledgeDocuments = signal<UploadedDocument[]>([]);
+  readonly knowledgeResults = signal<UploadedDocument[]>([]);
+  readonly selectedKnowledgeTitle = signal('');
+  readonly isEditingKnowledge = computed(() => Boolean(this.selectedKnowledgeTitle()));
+  readonly isLoadingKnowledge = signal(false);
   readonly isSavingKnowledge = signal(false);
+  readonly isDeletingKnowledge = signal(false);
   readonly isSearchingKnowledge = signal(false);
   readonly isKnowledgeDialogOpen = signal(false);
-  readonly isKnowledgeBusy = computed(() => this.isSavingKnowledge() || this.isSearchingKnowledge());
+  readonly isKnowledgeBusy = computed(() =>
+    this.isLoadingKnowledge() || this.isSavingKnowledge() || this.isDeletingKnowledge() || this.isSearchingKnowledge()
+  );
 
   private activeSource: EventSource | null = null;
 
@@ -68,12 +75,61 @@ export class ChatShell {
   openKnowledgeDialog(): void {
     if (this.isBusy() || this.isKnowledgeBusy()) return;
     this.isKnowledgeDialogOpen.set(true);
+    void this.loadKnowledgeDocuments();
     queueMicrotask(() => this.knowledgeTitleInput?.nativeElement.focus());
   }
 
   closeKnowledgeDialog(): void {
-    if (this.isSavingKnowledge()) return;
+    if (this.isSavingKnowledge() || this.isDeletingKnowledge()) return;
     this.isKnowledgeDialogOpen.set(false);
+  }
+
+  createKnowledgeDocument(): void {
+    if (this.isKnowledgeBusy()) return;
+    this.selectedKnowledgeTitle.set('');
+    this.knowledgeTitle.set('');
+    this.knowledgeDescription.set('');
+    this.knowledgeContent.set('');
+    this.knowledgeStatus.set('Creating a new document');
+    queueMicrotask(() => this.knowledgeTitleInput?.nativeElement.focus());
+  }
+
+  async loadKnowledgeDocuments(): Promise<void> {
+    if (this.isLoadingKnowledge()) return;
+
+    this.isLoadingKnowledge.set(true);
+    this.knowledgeStatus.set('Loading knowledge...');
+    try {
+      const result = await this.documentService.listDocuments();
+      this.knowledgeDocuments.set(result.documents);
+      this.knowledgeStatus.set(result.documents.length > 0 ? `${result.documents.length} document(s)` : 'No documents yet');
+    } catch (error) {
+      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Load failed');
+    } finally {
+      this.isLoadingKnowledge.set(false);
+    }
+  }
+
+  async readKnowledge(title: string): Promise<void> {
+    if (!title || this.isBusy() || this.isKnowledgeBusy()) return;
+
+    this.isLoadingKnowledge.set(true);
+    this.knowledgeStatus.set(`Reading ${title}...`);
+    try {
+      const document = await this.documentService.getDocument(title);
+      this.selectedKnowledgeTitle.set(document.title);
+      this.knowledgeTitle.set(document.title);
+      this.knowledgeDescription.set(document.description);
+      this.knowledgeContent.set(document.content);
+      this.knowledgeStatus.set(`Loaded ${document.title}`);
+      if (!this.isKnowledgeDialogOpen()) {
+        this.isKnowledgeDialogOpen.set(true);
+      }
+    } catch (error) {
+      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Read failed');
+    } finally {
+      this.isLoadingKnowledge.set(false);
+    }
   }
 
   async saveKnowledge(): Promise<void> {
@@ -89,12 +145,37 @@ export class ChatShell {
       this.knowledgeTitle.set('');
       this.knowledgeDescription.set('');
       this.knowledgeContent.set('');
+      this.selectedKnowledgeTitle.set('');
+      await this.loadKnowledgeDocuments();
       this.knowledgeStatus.set(`Saved ${document.title}`);
-      this.isKnowledgeDialogOpen.set(false);
     } catch (error) {
       this.knowledgeStatus.set(error instanceof Error ? error.message : 'Save failed');
     } finally {
       this.isSavingKnowledge.set(false);
+    }
+  }
+
+  async deleteKnowledge(title = this.selectedKnowledgeTitle() || this.knowledgeTitle().trim()): Promise<void> {
+    if (!title || this.isBusy() || this.isKnowledgeBusy()) return;
+    if (!this.documentService.confirm(`Delete "${title}" from the knowledge base?`)) return;
+
+    this.isDeletingKnowledge.set(true);
+    this.knowledgeStatus.set(`Deleting ${title}...`);
+    try {
+      await this.documentService.deleteDocument(title);
+      if (this.selectedKnowledgeTitle() === title || this.knowledgeTitle().trim() === title) {
+        this.selectedKnowledgeTitle.set('');
+        this.knowledgeTitle.set('');
+        this.knowledgeDescription.set('');
+        this.knowledgeContent.set('');
+      }
+      this.knowledgeResults.update((documents) => documents.filter((document) => document.title !== title));
+      await this.loadKnowledgeDocuments();
+      this.knowledgeStatus.set(`Deleted ${title}`);
+    } catch (error) {
+      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Delete failed');
+    } finally {
+      this.isDeletingKnowledge.set(false);
     }
   }
 
@@ -106,7 +187,7 @@ export class ChatShell {
     this.knowledgeStatus.set('Searching knowledge...');
     try {
       const result = await this.documentService.searchDocuments(query);
-      this.knowledgeResults.set(result.documents.map((document) => `${document.title} - ${document.description}`));
+      this.knowledgeResults.set(result.documents);
       this.knowledgeStatus.set(result.documents.length > 0 ? `${result.documents.length} result(s)` : 'No matching documents');
     } catch (error) {
       this.knowledgeResults.set([]);
@@ -193,7 +274,18 @@ export class ChatShell {
 
   formatUsage(usage: ResponseUsage | undefined): string {
     if (!usage) return '';
-    return `${usage.totalTokens} total · ${usage.promptTokens} in · ${usage.completionTokens} out`;
+    const parts = [
+      `${usage.totalTokens} total`,
+      `${usage.promptTokens} in`,
+      `${usage.completionTokens} out`
+    ];
+    if (usage.promptPerSecond !== undefined) {
+      parts.push(`PP ${this.formatTokensPerSecond(usage.promptPerSecond)}`);
+    }
+    if (usage.predictedPerSecond !== undefined) {
+      parts.push(`TG ${this.formatTokensPerSecond(usage.predictedPerSecond)}`);
+    }
+    return parts.join(' · ');
   }
 
   private createMessage(role: ChatMessage['role'], content: string, streaming: boolean): ChatMessage {
@@ -212,5 +304,9 @@ export class ChatShell {
 
   private focusInput(): void {
     this.inputBox?.nativeElement.focus();
+  }
+
+  private formatTokensPerSecond(value: number): string {
+    return `${value.toFixed(value >= 10 ? 1 : 2)} tok/s`;
   }
 }

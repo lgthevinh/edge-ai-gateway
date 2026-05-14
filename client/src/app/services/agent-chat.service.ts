@@ -90,11 +90,21 @@ export class AgentChatService {
     const promptTokens = this.readNumber(usage['promptTokens'] ?? usage['prompt_tokens']);
     const completionTokens = this.readNumber(usage['completionTokens'] ?? usage['completion_tokens']);
     const totalTokens = this.readNumber(usage['totalTokens'] ?? usage['total_tokens']);
-    if (promptTokens === null && completionTokens === null && totalTokens === null) return null;
+    const promptPerSecond = this.readNumber(usage['promptPerSecond'] ?? usage['prompt_per_second']);
+    const predictedPerSecond = this.readNumber(usage['predictedPerSecond'] ?? usage['predicted_per_second']);
+    if (
+      promptTokens === null &&
+      completionTokens === null &&
+      totalTokens === null &&
+      promptPerSecond === null &&
+      predictedPerSecond === null
+    ) return null;
     return {
       promptTokens: promptTokens ?? 0,
       completionTokens: completionTokens ?? 0,
-      totalTokens: totalTokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0))
+      totalTokens: totalTokens ?? ((promptTokens ?? 0) + (completionTokens ?? 0)),
+      ...(promptPerSecond !== null ? { promptPerSecond } : {}),
+      ...(predictedPerSecond !== null ? { predictedPerSecond } : {})
     };
   }
 

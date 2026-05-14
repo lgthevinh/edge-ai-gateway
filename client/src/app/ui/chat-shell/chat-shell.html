@@ -69,8 +69,11 @@
         }
         @if (knowledgeResults().length > 0) {
           <div class="knowledge-results">
-            @for (result of knowledgeResults(); track result) {
-              <div class="knowledge-result">{{ result }}</div>
+            @for (result of knowledgeResults(); track result.title) {
+              <button class="knowledge-result" type="button" (click)="readKnowledge(result.title)" [disabled]="isBusy() || isKnowledgeBusy()" [title]="'Read ' + result.title">
+                <strong>{{ result.title }}</strong>
+                <span>{{ result.description }}</span>
+              </button>
             }
           </div>
         }
@@ -160,50 +163,75 @@
     <div class="dialog-backdrop" role="presentation" (click)="closeKnowledgeDialog()"></div>
     <section class="knowledge-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-dialog-title" (keydown)="onKnowledgeDialogKeydown($event)">
       <div class="dialog-header">
-        <h2 id="knowledge-dialog-title">Add / update knowledge base</h2>
-        <button class="dialog-close" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge()" title="Close" aria-label="Close dialog">
+        <h2 id="knowledge-dialog-title">Knowledge base</h2>
+        <button class="dialog-close" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge() || isDeletingKnowledge()" title="Close" aria-label="Close dialog">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
       </div>
 
-      <div class="dialog-body">
-        <label class="dialog-label" for="dialog-knowledge-title">Title</label>
-        <input
-          #knowledgeTitleInput
-          id="dialog-knowledge-title"
-          type="text"
-          placeholder="Document title"
-          [ngModel]="knowledgeTitle()"
-          (ngModelChange)="knowledgeTitle.set($event)"
-          [disabled]="isSavingKnowledge()"
-        >
+      <div class="dialog-body knowledge-manager">
+        <aside class="document-list" aria-label="Knowledge documents">
+          <div class="document-list-header">
+            <span>Documents</span>
+            <button class="document-new-button" type="button" (click)="createKnowledgeDocument()" [disabled]="isKnowledgeBusy()" title="New document" aria-label="New document">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+          <div class="document-list-scroll">
+            @if (knowledgeDocuments().length === 0) {
+              <div class="document-empty">{{ isLoadingKnowledge() ? 'Loading...' : 'No documents' }}</div>
+            }
+            @for (document of knowledgeDocuments(); track document.title) {
+              <button class="document-list-item" type="button" (click)="readKnowledge(document.title)" [class.selected]="selectedKnowledgeTitle() === document.title" [disabled]="isKnowledgeBusy()" [title]="'Read ' + document.title">
+                <strong>{{ document.title }}</strong>
+                <span>{{ document.description }}</span>
+              </button>
+            }
+          </div>
+        </aside>
 
-        <label class="dialog-label" for="dialog-knowledge-description">Description</label>
-        <input
-          id="dialog-knowledge-description"
-          type="text"
-          placeholder="Short description"
-          [ngModel]="knowledgeDescription()"
-          (ngModelChange)="knowledgeDescription.set($event)"
-          [disabled]="isSavingKnowledge()"
-        >
+        <section class="document-editor" aria-label="Knowledge document editor">
+          <label class="dialog-label" for="dialog-knowledge-title">Title</label>
+          <input
+            #knowledgeTitleInput
+            id="dialog-knowledge-title"
+            type="text"
+            placeholder="Document title"
+            [ngModel]="knowledgeTitle()"
+            (ngModelChange)="knowledgeTitle.set($event)"
+            [disabled]="isSavingKnowledge() || isDeletingKnowledge() || isEditingKnowledge()"
+          >
 
-        <label class="dialog-label" for="dialog-knowledge-content">Content</label>
-        <textarea
-          id="dialog-knowledge-content"
-          class="dialog-textarea"
-          placeholder="Knowledge content"
-          rows="10"
-          [ngModel]="knowledgeContent()"
-          (ngModelChange)="knowledgeContent.set($event)"
-          [disabled]="isSavingKnowledge()"
-        ></textarea>
+          <label class="dialog-label" for="dialog-knowledge-description">Description</label>
+          <input
+            id="dialog-knowledge-description"
+            type="text"
+            placeholder="Short description"
+            [ngModel]="knowledgeDescription()"
+            (ngModelChange)="knowledgeDescription.set($event)"
+            [disabled]="isSavingKnowledge() || isDeletingKnowledge()"
+          >
+
+          <label class="dialog-label" for="dialog-knowledge-content">Content</label>
+          <textarea
+            id="dialog-knowledge-content"
+            class="dialog-textarea"
+            placeholder="Knowledge content"
+            rows="10"
+            [ngModel]="knowledgeContent()"
+            (ngModelChange)="knowledgeContent.set($event)"
+            [disabled]="isSavingKnowledge() || isDeletingKnowledge()"
+          ></textarea>
+        </section>
       </div>
 
       <div class="dialog-actions">
-        <button class="dialog-secondary" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge()">Cancel</button>
+        <button class="dialog-secondary" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge() || isDeletingKnowledge()">Close</button>
+        <button class="dialog-danger" type="button" (click)="deleteKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeTitle().trim()">
+          {{ isDeletingKnowledge() ? 'Deleting...' : 'Delete' }}
+        </button>
         <button class="dialog-primary" type="button" (click)="saveKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeTitle().trim() || !knowledgeDescription().trim() || !knowledgeContent().trim()">
-          {{ isSavingKnowledge() ? 'Saving...' : 'Save' }}
+          {{ isSavingKnowledge() ? 'Saving...' : isEditingKnowledge() ? 'Update' : 'Create' }}
         </button>
       </div>
     </section>

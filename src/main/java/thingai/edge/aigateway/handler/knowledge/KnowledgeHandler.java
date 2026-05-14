@@ -37,8 +37,20 @@ public class KnowledgeHandler {
 
     public KnowledgeDocument getDocument(String title) {
         if (title == null || title.isBlank()) return null;
-        KnowledgeDocument[] documents = dao.query(KnowledgeDocument.class, "title = ?", title);
+        KnowledgeDocument[] documents = dao.query(KnowledgeDocument.class, "title", title);
         return documents != null && documents.length > 0 ? documents[0] : null;
+    }
+
+    public boolean deleteDocument(String title) {
+        if (title == null || title.isBlank()) {
+            throw new IllegalArgumentException("title is required");
+        }
+        KnowledgeDocument existing = getDocument(title);
+        if (existing == null) {
+            return false;
+        }
+        dao.deleteByColumn(KnowledgeDocument.class, "title", title);
+        return true;
     }
 
     public KnowledgeDocument saveDocument(String title, String description, String content) {
@@ -93,7 +105,7 @@ public class KnowledgeHandler {
                     KnowledgeDocument.class,
                     "embedding",
                     queryEmbedding,
-                    Math.max(1, topK)
+                    Math.max(3, topK)
             );
             if (results.length == 0) {
                 return new KnowledgeDocument[0];
@@ -102,6 +114,7 @@ public class KnowledgeHandler {
             for  (int i = 0; i < results.length; i++) {
                 KnowledgeDocument document = results[i].getEntity();
                 documents[i] = document;
+                ILog.d(TAG, "sematicSearch", String.valueOf(results[i].getDistance()), document.title);
             }
             return documents;
         } catch (UnsupportedOperationException e) {

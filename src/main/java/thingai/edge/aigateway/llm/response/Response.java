@@ -9,6 +9,9 @@ public class Response {
     @SerializedName("usage")
     private ResponseUsage usage;
 
+    @SerializedName("timings")
+    private ResponseTimings timings;
+
     public Response() {
     }
 
@@ -31,6 +34,14 @@ public class Response {
 
     public void setUsage(ResponseUsage usage) {
         this.usage = usage;
+    }
+
+    public ResponseTimings getTimings() {
+        return timings;
+    }
+
+    public void setTimings(ResponseTimings timings) {
+        this.timings = timings;
     }
 
     public String getMessageContent() {

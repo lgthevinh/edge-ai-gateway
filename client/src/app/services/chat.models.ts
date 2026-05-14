@@ -22,6 +22,8 @@ export interface ResponseUsage {
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
+  promptPerSecond?: number;
+  predictedPerSecond?: number;
 }
 
 export interface AgentHistoryMessage {
