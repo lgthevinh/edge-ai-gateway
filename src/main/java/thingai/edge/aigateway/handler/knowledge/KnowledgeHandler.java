@@ -2,6 +2,7 @@ package thingai.edge.aigateway.handler.knowledge;
 
 import org.thingai.base.dao.Dao;
 import org.thingai.base.log.ILog;
+import org.thingai.sdk.ai.vector.dao.DaoVectorSqlite;
 import thingai.edge.aigateway.handler.embedding.EmbeddingHandler;
 
 import java.util.Arrays;
@@ -69,6 +70,41 @@ public class KnowledgeHandler {
         embedDocument(document, existing);
         dao.insertOrUpdate(document);
         return document;
+    }
+
+    public KnowledgeDocument[] semanticSearch(String query, int topK) {
+        if (query == null || query.isBlank()) return new KnowledgeDocument[0];
+        if (embeddingHandler == null) {
+            ILog.d(TAG, "semanticSearch skipped: embedding handler is not configured");
+            return new KnowledgeDocument[0];
+        }
+        if (!(dao instanceof DaoVectorSqlite vectorDao)) {
+            ILog.d(TAG, "semanticSearch skipped: dao does not support vector search");
+            return new KnowledgeDocument[0];
+        }
+
+        try {
+            float[] queryEmbedding = embeddingHandler.embed(query);
+            if (queryEmbedding == null || queryEmbedding.length == 0) {
+                return new KnowledgeDocument[0];
+            }
+            KnowledgeDocument[] documents = vectorDao.searchVectors(
+                    KnowledgeDocument.class,
+                    queryEmbedding,
+                    Math.max(1, topK)
+            );
+            return documents != null ? documents : new KnowledgeDocument[0];
+        } catch (UnsupportedOperationException e) {
+            ILog.d(TAG, "semanticSearch unsupported by vector DAO: " + e.getMessage());
+            return new KnowledgeDocument[0];
+        } catch (Exception e) {
+            ILog.d(TAG, "semanticSearch failed: " + e.getMessage());
+            return new KnowledgeDocument[0];
+        }
+    }
+
+    public KnowledgeDocument[] searchDocuments(String query, int topK) {
+        return semanticSearch(query, topK);
     }
 
     public DocumentImportResult importMarkdownDocuments() {
