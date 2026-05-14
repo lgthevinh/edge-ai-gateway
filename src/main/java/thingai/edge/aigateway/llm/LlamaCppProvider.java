@@ -3,6 +3,8 @@ package thingai.edge.aigateway.llm;
 import com.google.gson.JsonObject;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.llm.content.Content;
+import thingai.edge.aigateway.llm.embedding.EmbeddingRequest;
+import thingai.edge.aigateway.llm.embedding.EmbeddingResponse;
 import thingai.edge.aigateway.llm.message.Message;
 import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.message.ToolCall;
@@ -115,6 +117,20 @@ public class LlamaCppProvider extends LlmProvider {
     }
 
     @Override
+    public EmbeddingResponse embeddings(EmbeddingRequest requestBody) {
+        ILog.d(TAG, "embeddings");
+        HttpRequest request = buildEmbeddingRequest(requestBody);
+        try {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            ILog.d(TAG, "embeddings", "response: " + response.body());
+            return JsonUtil.fromJson(response.body(), EmbeddingResponse.class);
+        } catch (Exception e) {
+            ILog.d(TAG, "embeddings failed: " + e.getMessage());
+            return null;
+        }
+    }
+
+    @Override
     public boolean healthCheck() {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/health"))
@@ -147,6 +163,23 @@ public class LlamaCppProvider extends LlmProvider {
         String json = JsonUtil.toJson(map);
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/chat/completions"))
+                .header("Content-Type", "application/json")
+                .header("Authorization", "Bearer " + apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(json))
+                .build();
+    }
+
+    private HttpRequest buildEmbeddingRequest(EmbeddingRequest requestBody) {
+        if (requestBody.getModel() == null || requestBody.getModel().isBlank()) {
+            requestBody.setModel(baseModel);
+        }
+        if (requestBody.getEncodingFormat() == null || requestBody.getEncodingFormat().isBlank()) {
+            requestBody.setEncodingFormat("float");
+        }
+
+        String json = JsonUtil.toJson(requestBody);
+        return HttpRequest.newBuilder()
+                .uri(URI.create(baseUrl + "/embeddings"))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(json))

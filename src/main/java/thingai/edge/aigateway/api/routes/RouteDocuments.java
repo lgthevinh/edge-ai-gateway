@@ -4,8 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
 import thingai.edge.aigateway.EdgeAiGateway;
-import thingai.edge.aigateway.knowledgebase.DocumentImportResult;
-import thingai.edge.aigateway.knowledgebase.KnowledgeDocument;
+import thingai.edge.aigateway.handler.knowledge.DocumentImportResult;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import static io.javalin.apibuilder.ApiBuilder.get;
@@ -18,10 +18,8 @@ public class RouteDocuments implements EndpointGroup {
         path("documents", () -> {
             get(ctx -> {
                 JsonArray documents = new JsonArray();
-                for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeDocumentService().listDocuments()) {
+                for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().listDocuments()) {
                     JsonObject item = new JsonObject();
-                    item.addProperty("document_id", document.documentId);
-                    item.addProperty("path", document.path);
                     item.addProperty("title", document.title);
                     item.addProperty("description", document.description);
                     item.addProperty("updated_at", document.updatedAt);
@@ -34,26 +32,25 @@ public class RouteDocuments implements EndpointGroup {
             });
 
             post("/refresh", ctx -> {
-                DocumentImportResult importResult = EdgeAiGateway.getKnowledgeDocumentService().importMarkdownDocuments();
+                DocumentImportResult importResult = EdgeAiGateway.getKnowledgeHandler().importMarkdownDocuments();
                 ctx.json(JsonUtil.toJson(importResult));
             });
 
             post("/upload", ctx -> {
                 try {
                     JsonObject body = JsonUtil.fromJson(ctx.body(), JsonObject.class);
-                    if (body == null || !body.has("file_name") || !body.has("content")) {
-                        ctx.status(400).result("{\"error\":\"file_name and content are required\"}");
+                    if (body == null || !body.has("title") || !body.has("description") || !body.has("content")) {
+                        ctx.status(400).result("{\"error\":\"title, description, and content are required\"}");
                         return;
                     }
 
-                    KnowledgeDocument document = EdgeAiGateway.getKnowledgeDocumentService().saveTextDocument(
-                            body.get("file_name").getAsString(),
+                    KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().saveDocument(
+                            body.get("title").getAsString(),
+                            body.get("description").getAsString(),
                             body.get("content").getAsString()
                     );
 
                     JsonObject result = new JsonObject();
-                    result.addProperty("document_id", document.documentId);
-                    result.addProperty("path", document.path);
                     result.addProperty("title", document.title);
                     result.addProperty("description", document.description);
                     result.addProperty("updated_at", document.updatedAt);

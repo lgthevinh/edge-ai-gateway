@@ -7,7 +7,7 @@ import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.message.ToolCall;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
-import thingai.edge.aigateway.session.SessionMessage;
+import thingai.edge.aigateway.handler.session.SessionMessage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.util.Arrays;

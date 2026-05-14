@@ -2,15 +2,15 @@ package thingai.edge.aigateway.agent.tools;
 
 import com.google.gson.JsonObject;
 import thingai.edge.aigateway.agent.IAgentTool;
-import thingai.edge.aigateway.knowledgebase.KnowledgeDocument;
-import thingai.edge.aigateway.knowledgebase.KnowledgeDocumentService;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 public class ReadDocumentTool implements IAgentTool {
-    private final KnowledgeDocumentService documentService;
+    private final KnowledgeHandler knowledgeHandler;
 
-    public ReadDocumentTool(KnowledgeDocumentService documentService) {
-        this.documentService = documentService;
+    public ReadDocumentTool(KnowledgeHandler knowledgeHandler) {
+        this.knowledgeHandler = knowledgeHandler;
     }
 
     @Override
@@ -20,30 +20,28 @@ public class ReadDocumentTool implements IAgentTool {
 
     @Override
     public String getDescription() {
-        return "Knowledge base tool: read the full Markdown/text content of one user-uploaded knowledge document by document_id. Use after list_documents to answer questions grounded in local saved documents.";
+        return "Knowledge base tool: read the full Markdown/text content of one user-uploaded knowledge document by title. Use after list_documents to answer questions grounded in local saved documents.";
     }
 
     @Override
     public String getParametersJson() {
         return "{\"type\":\"object\",\"properties\":{"
-                + "\"document_id\":{\"type\":\"string\",\"description\":\"Document id returned by list_documents\"}"
-                + "},\"required\":[\"document_id\"]}";
+                + "\"title\":{\"type\":\"string\",\"description\":\"Document title returned by list_documents\"}"
+                + "},\"required\":[\"title\"]}";
     }
 
     @Override
     public String execute(String paramsJson) {
         JsonObject params = JsonUtil.fromJson(paramsJson, JsonObject.class);
-        String documentId = params != null && params.has("document_id") ? params.get("document_id").getAsString() : "";
-        KnowledgeDocument document = documentService.getDocument(documentId);
+        String title = params != null && params.has("title") ? params.get("title").getAsString() : "";
+        KnowledgeDocument document = knowledgeHandler.getDocument(title);
 
         JsonObject result = new JsonObject();
         if (document == null) {
-            result.addProperty("error", "document not found: " + documentId);
+            result.addProperty("error", "document not found: " + title);
             return JsonUtil.toJson(result);
         }
 
-        result.addProperty("document_id", document.documentId);
-        result.addProperty("path", document.path);
         result.addProperty("title", document.title);
         result.addProperty("description", document.description);
         result.addProperty("content", document.content);
