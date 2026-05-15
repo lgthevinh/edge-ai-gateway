@@ -37,7 +37,7 @@ public class AssistantAgent {
             - Use clear, well-structured Markdown with headings, bullet points, and code blocks where appropriate.
             - Start with the answer or result — save explanation of your tool usage for the end (brief, one-sentence summary of what you searched).
             - If a task cannot be completed, explain exactly what you tried and what was missing.
-        """;
+        """.stripIndent();
 
     public static Agent create(LlmProvider llmProvider) {
         return create(llmProvider, new IAgentTool[0]);
