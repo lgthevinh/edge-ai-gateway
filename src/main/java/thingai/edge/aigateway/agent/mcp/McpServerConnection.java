@@ -67,7 +67,7 @@ public class McpServerConnection implements Closeable {
                     for (Map.Entry<String, String> header : headers.entrySet()) {
                         builder.header(header.getKey(), header.getValue());
                     }
-                    builder.timeout(Duration.ofSeconds(30000L));
+//                    builder.timeout(Duration.ofSeconds(30000L));
                 })
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
