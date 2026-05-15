@@ -11,8 +11,14 @@ import io.modelcontextprotocol.spec.McpSchema;
 import org.thingai.base.log.ILog;
 
 import java.io.Closeable;
+import java.net.URI;
+import java.time.Duration;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages the lifecycle of a single MCP server process connected via stdio.
@@ -22,6 +28,10 @@ import java.util.Map;
 public class McpServerConnection implements Closeable {
 
     private static final String TAG = "McpServerConnection";
+    private static final ExecutorService MCP_HTTP_EXECUTOR = Executors.newFixedThreadPool(
+            4,
+            daemonThreadFactory("mcp-http")
+    );
 
     private final String name;
     private final McpSyncClient client;
@@ -56,30 +66,40 @@ public class McpServerConnection implements Closeable {
         return buildMcpClient(name, transport, defaultPath);
     }
 
-    public static McpServerConnection connectHttp(String name, String url, String endpoint, Map<String, String> headers) {
+    public static McpServerConnection connectHttp(String name, String url, String endpoint, boolean useUrlAsEndpoint, Map<String, String> headers) {
+        HttpEndpoint httpEndpoint = resolveHttpEndpoint(url, endpoint, useUrlAsEndpoint);
         McpClientTransport transport = HttpClientStreamableHttpTransport
-                .builder(url)
+                .builder(httpEndpoint.baseUri())
+                .endpoint(httpEndpoint.endpoint())
+                .customizeClient(builder -> builder.executor(MCP_HTTP_EXECUTOR))
                 .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
                     for (Map.Entry<String, String> header : headers.entrySet()) {
                         builder.header(header.getKey(), header.getValue());
                     }
+                    builder.timeout(Duration.ofSeconds(30L));
                 })
-                .endpoint(endpoint)
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
 
         return buildMcpClient(name, transport, null);
     }
 
-    public static McpServerConnection connectSse(String name, String url, String endpoint, Map<String, String> headers) {
+    public static McpServerConnection connectSse(String name, String url, Map<String, String> headers) {
+        return connectSse(name, url, "/sse", false, headers);
+    }
+
+    public static McpServerConnection connectSse(String name, String url, String endpoint,
+                                                 boolean useUrlAsEndpoint, Map<String, String> headers) {
+        HttpEndpoint httpEndpoint = resolveHttpEndpoint(url, endpoint, useUrlAsEndpoint);
         McpClientTransport transport = HttpClientSseClientTransport
-                .builder(url)
+                .builder(httpEndpoint.baseUri())
+                .sseEndpoint(httpEndpoint.endpoint())
+                .customizeClient(builder -> builder.executor(MCP_HTTP_EXECUTOR))
                 .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
                     for (Map.Entry<String, String> header : headers.entrySet()) {
                         builder.header(header.getKey(), header.getValue());
                     }
                 })
-                .sseEndpoint(endpoint)
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
 
@@ -91,6 +111,7 @@ public class McpServerConnection implements Closeable {
 
     @Override
     public void close() {
+        ILog.d(TAG, "close");
         try {
             client.closeGracefully();
             ILog.d(TAG, "Disconnected MCP server '" + name + "'");
@@ -111,7 +132,7 @@ public class McpServerConnection implements Closeable {
                 .map(t -> new McpToolAdapter(client, t, defaultPath))
                 .toList();
 
-        ILog.d(TAG, "Connected MCP server '" + name + "' — " + tools.size() + " tool(s): "
+        ILog.d(TAG, "buildMcpClient '" + name + "' — " + tools.size() + " tool(s): "
                 + tools.stream().map(McpSchema.Tool::name).toList());
 
         return new McpServerConnection(name, client, adapters);
@@ -138,5 +159,47 @@ public class McpServerConnection implements Closeable {
             }
         }
         return null;
+    }
+
+    private static HttpEndpoint resolveHttpEndpoint(String url, String endpoint, boolean useUrlAsEndpoint) {
+        URI uri = URI.create(url);
+        if (!useUrlAsEndpoint) {
+            return new HttpEndpoint(stripTrailingSlash(url), ensureLeadingSlash(endpoint));
+        }
+
+        String baseUri = uri.getScheme() + "://" + uri.getRawAuthority();
+        String path = uri.getRawPath();
+        if (path == null || path.isBlank() || "/".equals(path)) {
+            path = "/";
+        }
+        if (uri.getRawQuery() != null && !uri.getRawQuery().isBlank()) {
+            path += "?" + uri.getRawQuery();
+        }
+        return new HttpEndpoint(baseUri, path);
+    }
+
+    private static String stripTrailingSlash(String value) {
+        if (value == null || value.length() <= 1) return value;
+        while (value.endsWith("/") && value.length() > 1) {
+            value = value.substring(0, value.length() - 1);
+        }
+        return value;
+    }
+
+    private static String ensureLeadingSlash(String value) {
+        if (value == null || value.isBlank()) return "/";
+        String endpoint = value.trim();
+        return endpoint.startsWith("/") ? endpoint : "/" + endpoint;
+    }
+
+    private record HttpEndpoint(String baseUri, String endpoint) {}
+
+    private static ThreadFactory daemonThreadFactory(String prefix) {
+        AtomicInteger counter = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 }

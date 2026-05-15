@@ -8,6 +8,7 @@ export interface ChatMessage {
   streaming: boolean;
   error?: boolean;
   usage?: ResponseUsage;
+  elapsedMs?: number;
 }
 
 export interface SessionRecord {

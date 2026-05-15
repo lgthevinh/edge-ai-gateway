@@ -29,10 +29,10 @@ public class AssistantAgent {
             toolList.append("  - ")
                     .append(tool.getName())
                     .append(": ")
-                    .append(tool.getDescription())
-                    .append("  - ")
-                    .append(tool.getParametersJson())
-                    .append('\n');
+                    .append(tool.getDescription());
+//                    .append("  - ")
+//                    .append(tool.getParametersJson())
+//                    .append('\n');
         }
 
         return """

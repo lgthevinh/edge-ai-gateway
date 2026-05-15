@@ -5,6 +5,7 @@ export interface UploadedDocument {
   title: string;
   description: string;
   updated_at: number;
+  distance?: number;
 }
 
 export interface KnowledgeDocument extends UploadedDocument {

@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import thingai.edge.aigateway.agent.IAgentTool;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeSearchResult;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 public class SearchDocumentsTool implements IAgentTool {
@@ -39,11 +40,13 @@ public class SearchDocumentsTool implements IAgentTool {
         int topK = params != null && params.has("top_k") ? params.get("top_k").getAsInt() : 5;
 
         JsonArray documents = new JsonArray();
-        for (KnowledgeDocument document : knowledgeHandler.searchDocuments(query, topK)) {
+        for (KnowledgeSearchResult searchResult : knowledgeHandler.searchDocumentResults(query, topK)) {
+            KnowledgeDocument document = searchResult.getDocument();
             JsonObject item = new JsonObject();
             item.addProperty("title", document.title);
             item.addProperty("description", document.description);
             item.addProperty("updated_at", document.updatedAt);
+            item.addProperty("distance", searchResult.getDistance());
             documents.add(item);
         }
 

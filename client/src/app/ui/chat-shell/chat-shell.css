@@ -136,6 +136,7 @@ select { font-family: var(--font); }
 }
 .knowledge-result strong { color: var(--text); font-size: 11px; }
 .knowledge-result span { color: var(--text-dim); }
+.knowledge-result code { color: var(--tool); font-family: var(--mono); font-size: 10px; }
 .knowledge-result:hover:not(:disabled) { border-color: var(--accent); }
 
 .dialog-backdrop {

@@ -68,20 +68,21 @@ public class McpRegistry implements Closeable {
         }
     }
 
-    public void connectHttp(String name, String url, String endpoint, Map<String, String> headers) {
+    public void connectHttp(String name, String url, String endpoint, boolean useUrlAsEndpoint, Map<String, String> headers) {
+        ILog.d(TAG, "connectHttp", name);
         disconnect(name);
         try {
-            McpServerConnection conn = McpServerConnection.connectHttp(name, url, endpoint, headers);
+            McpServerConnection conn = McpServerConnection.connectHttp(name, url, endpoint, useUrlAsEndpoint, headers);
             connections.put(name, conn);
         } catch (Exception e) {
             ILog.d(TAG, "Failed to connect MCP server '" + name + "': " + e.getMessage());
         }
     }
 
-    public void connectSse(String name, String url, String endpoint, Map<String, String> headers) {
+    public void connectSse(String name, String url, String endpoint, boolean useUrlAsEndpoint, Map<String, String> headers) {
         disconnect(name);
         try {
-            McpServerConnection conn = McpServerConnection.connectSse(name, url, endpoint, headers);
+            McpServerConnection conn = McpServerConnection.connectSse(name, url, endpoint, useUrlAsEndpoint, headers);
             connections.put(name, conn);
         } catch (Exception e) {
             ILog.d(TAG, "Failed to connect MCP server '" + name + "': " + e.getMessage());
@@ -128,10 +129,11 @@ public class McpRegistry implements Closeable {
                         if (server.has("url")) {
                             String url = server.get("url").getAsString();
                             String endpoint = endpointOrDefault(server, DEFAULT_HTTP_ENDPOINT);
+                            boolean useUrlAsEndpoint = getBoolean(server, "use_url_as_endpoint", false);
                             Map<String, String> headers = parseHeaders(server);
 
                             ILog.d(TAG, "loadConfig", "http", name);
-                            connectHttp(name, url, endpoint, headers);
+                            connectHttp(name, url, endpoint, useUrlAsEndpoint, headers);
                         } else {
                             ILog.d(TAG, "Server '" + name + "' missing 'url' for http type");
                         }
@@ -155,10 +157,11 @@ public class McpRegistry implements Closeable {
                         if (server.has("url")) {
                             String url = server.get("url").getAsString();
                             String endpoint = endpointOrDefault(server, DEFAULT_SSE_ENDPOINT);
+                            boolean useUrlAsEndpoint = getBoolean(server, "use_url_as_endpoint", false);
                             Map<String, String> headers = parseHeaders(server);
 
                             ILog.d(TAG, "loadConfig", "sse", name);
-                            connectSse(name, url, endpoint, headers);
+                            connectSse(name, url, endpoint, useUrlAsEndpoint, headers);
                         } else {
                             ILog.d(TAG, "Server '" + name + "' missing 'url' for sse type");
                         }
@@ -221,9 +224,14 @@ public class McpRegistry implements Closeable {
 
     private Map<String, String> parseHeaders(JsonObject server) {
         Map<String, String> headers = new LinkedHashMap<>();
-        if (!server.has("headers") || !server.get("headers").isJsonObject()) return headers;
+        JsonObject headersJson = null;
+        if (server.has("headers") && server.get("headers").isJsonObject()) {
+            headersJson = server.getAsJsonObject("headers");
+        } else if (server.has("header") && server.get("header").isJsonObject()) {
+            headersJson = server.getAsJsonObject("header");
+        }
+        if (headersJson == null) return headers;
 
-        JsonObject headersJson = server.getAsJsonObject("headers");
         for (Map.Entry<String, JsonElement> header : headersJson.entrySet()) {
             String value = header.getValue().isJsonNull() ? "" : header.getValue().getAsString();
             headers.put(header.getKey(), resolveEnvPlaceholders(value));
@@ -246,6 +254,12 @@ public class McpRegistry implements Closeable {
         JsonElement element = object.get(key);
         if (element == null || element.isJsonNull()) return defaultValue;
         return element.getAsString();
+    }
+
+    private static boolean getBoolean(JsonObject object, String key, boolean defaultValue) {
+        JsonElement element = object.get(key);
+        if (element == null || element.isJsonNull()) return defaultValue;
+        return element.getAsBoolean();
     }
 
     private static boolean isBlank(String value) {

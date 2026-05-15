@@ -48,3 +48,4 @@ bin/
 ### Environment Variables & Data
 .env
 data/
+mcp-servers.json

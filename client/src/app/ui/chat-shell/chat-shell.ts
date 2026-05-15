@@ -213,6 +213,7 @@ export class ChatShell {
     this.sessionStore.addMessage(assistant);
     queueMicrotask(() => this.scrollToBottom());
 
+    const startedAt = performance.now();
     let tokenBuffer = '';
     let finalBuffer = '';
 
@@ -233,14 +234,23 @@ export class ChatShell {
         if (usage) this.sessionStore.updateMessage(assistant.id, { usage });
       },
       done: () => {
-        this.sessionStore.updateMessage(assistant.id, { content: finalBuffer || tokenBuffer, streaming: false });
+        this.sessionStore.updateMessage(assistant.id, {
+          content: finalBuffer || tokenBuffer,
+          streaming: false,
+          elapsedMs: performance.now() - startedAt
+        });
         this.status.set('idle');
         this.activeSource = null;
         queueMicrotask(() => this.focusInput());
       },
       error: () => {
         const content = tokenBuffer || '[Connection error - please try again]';
-        this.sessionStore.updateMessage(assistant.id, { content, streaming: false, error: !tokenBuffer });
+        this.sessionStore.updateMessage(assistant.id, {
+          content,
+          streaming: false,
+          error: !tokenBuffer,
+          elapsedMs: performance.now() - startedAt
+        });
         this.status.set('idle');
         this.activeSource = null;
       }
@@ -288,6 +298,16 @@ export class ChatShell {
     return parts.join(' · ');
   }
 
+  formatMessageMeta(message: ChatMessage): string {
+    const parts: string[] = [];
+    const usage = this.formatUsage(message.usage);
+    if (usage) parts.push(usage);
+    if (message.elapsedMs !== undefined) {
+      parts.push(`time ${this.formatElapsed(message.elapsedMs)}`);
+    }
+    return parts.join(' · ');
+  }
+
   private createMessage(role: ChatMessage['role'], content: string, streaming: boolean): ChatMessage {
     return { id: globalThis.crypto?.randomUUID() ?? `message-${Date.now()}`, role, content, tools: [], streaming };
   }
@@ -308,5 +328,14 @@ export class ChatShell {
 
   private formatTokensPerSecond(value: number): string {
     return `${value.toFixed(value >= 10 ? 1 : 2)} tok/s`;
+  }
+
+  private formatElapsed(milliseconds: number): string {
+    const seconds = milliseconds / 1000;
+    if (seconds < 10) return `${seconds.toFixed(2)}s`;
+    if (seconds < 60) return `${seconds.toFixed(1)}s`;
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = Math.round(seconds % 60).toString().padStart(2, '0');
+    return `${minutes}:${remainingSeconds}`;
   }
 }

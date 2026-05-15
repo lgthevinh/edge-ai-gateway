@@ -52,4 +52,9 @@ public class Message {
     public void setToolCallId(String toolCallId) {
         this.toolCallId = toolCallId;
     }
+
+    @Override
+    public String toString() {
+        return "%s, %s".formatted(role, content);
+    }
 }

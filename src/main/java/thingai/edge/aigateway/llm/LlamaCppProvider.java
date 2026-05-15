@@ -21,18 +21,28 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
-import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class LlamaCppProvider extends LlmProvider {
     private static final String TAG = "LlamaCppProvider";
+    private static final ExecutorService LLM_HTTP_EXECUTOR = Executors.newFixedThreadPool(
+            8,
+            daemonThreadFactory("llm-http")
+    );
 
     private static final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
+            .executor(LLM_HTTP_EXECUTOR)
             .build();
 
     private final String apiKey;
@@ -63,12 +73,16 @@ public class LlamaCppProvider extends LlmProvider {
     @Override
     public CompletableFuture<Response> chatCompletionAsync(Content content, ResponseStreamCallback callback) {
         ILog.d(TAG, "chatCompletionAsync");
+
         HttpRequest request = buildRequest(content, true);
         StringBuilder fullText = new StringBuilder();
         AtomicReference<ResponseUsage> usage = new AtomicReference<>();
         AtomicReference<String> finishReason = new AtomicReference<>("stop");
         TreeMap<Integer, StreamingToolCall> toolCalls = new TreeMap<>();
         CompletableFuture<Response> promise = new CompletableFuture<>();
+
+        ILog.d(TAG, Arrays.toString(content.getMessages()));
+        ILog.d(TAG, "header", request.headers().toString());
 
         httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
                 .thenAccept(response -> response.body().forEach(line -> {
@@ -121,6 +135,7 @@ public class LlamaCppProvider extends LlmProvider {
                 }))
                 .exceptionally(e -> {
                     Exception ex = new Exception(e);
+                    ILog.d(TAG, "chatCompletionAsync exception HttpClient", ex.getMessage());
                     callback.onError(ex);
                     promise.completeExceptionally(ex);
                     return null;
@@ -259,5 +274,14 @@ public class LlamaCppProvider extends LlmProvider {
         private String type;
         private String name;
         private final StringBuilder arguments = new StringBuilder();
+    }
+
+    private static ThreadFactory daemonThreadFactory(String prefix) {
+        AtomicInteger counter = new AtomicInteger();
+        return runnable -> {
+            Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
+            thread.setDaemon(true);
+            return thread;
+        };
     }
 }

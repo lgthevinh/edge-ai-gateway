@@ -6,6 +6,7 @@ import io.javalin.apibuilder.EndpointGroup;
 import thingai.edge.aigateway.EdgeAiGateway;
 import thingai.edge.aigateway.handler.knowledge.DocumentImportResult;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeSearchResult;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import static io.javalin.apibuilder.ApiBuilder.delete;
@@ -72,8 +73,8 @@ public class RouteDocuments implements EndpointGroup {
                     String query = body.get("query").getAsString();
                     int topK = body.has("top_k") ? body.get("top_k").getAsInt() : 5;
                     JsonArray documents = new JsonArray();
-                    for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().searchDocuments(query, topK)) {
-                        documents.add(toSummaryJson(document));
+                    for (KnowledgeSearchResult searchResult : EdgeAiGateway.getKnowledgeHandler().searchDocumentResults(query, topK)) {
+                        documents.add(toSearchJson(searchResult));
                     }
 
                     JsonObject result = new JsonObject();
@@ -145,6 +146,12 @@ public class RouteDocuments implements EndpointGroup {
         JsonObject item = toSummaryJson(document);
         item.addProperty("content", document.content);
         item.addProperty("created_at", document.createdAt);
+        return item;
+    }
+
+    private static JsonObject toSearchJson(KnowledgeSearchResult result) {
+        JsonObject item = toSummaryJson(result.getDocument());
+        item.addProperty("distance", result.getDistance());
         return item;
     }
 }

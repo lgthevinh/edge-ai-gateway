@@ -73,6 +73,9 @@
               <button class="knowledge-result" type="button" (click)="readKnowledge(result.title)" [disabled]="isBusy() || isKnowledgeBusy()" [title]="'Read ' + result.title">
                 <strong>{{ result.title }}</strong>
                 <span>{{ result.description }}</span>
+                @if (result.distance !== undefined) {
+                  <code>distance {{ result.distance.toFixed(4) }}</code>
+                }
               </button>
             }
           </div>
@@ -108,8 +111,8 @@
                 <span class="agent-name">Assistant</span>
                 @if (message.streaming && !message.content) {
                   <span class="agent-stage">Thinking...</span>
-                } @else if (message.usage) {
-                  <span class="agent-stage">{{ formatUsage(message.usage) }}</span>
+                } @else if (formatMessageMeta(message)) {
+                  <span class="agent-stage">{{ formatMessageMeta(message) }}</span>
                 }
               </span>
             </div>

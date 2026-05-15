@@ -85,49 +85,60 @@ public class KnowledgeHandler {
         return document;
     }
 
-    public KnowledgeDocument[] semanticSearch(String query, int topK) {
-        if (query == null || query.isBlank()) return new KnowledgeDocument[0];
+    public KnowledgeSearchResult[] semanticSearch(String query, int topK) {
+        if (query == null || query.isBlank()) return new KnowledgeSearchResult[0];
         if (embeddingHandler == null) {
             ILog.d(TAG, "semanticSearch skipped: embedding handler is not configured");
-            return new KnowledgeDocument[0];
+            return new KnowledgeSearchResult[0];
         }
         if (!(dao instanceof DaoVectorSqlite vectorDao)) {
             ILog.d(TAG, "semanticSearch skipped: dao does not support vector search");
-            return new KnowledgeDocument[0];
+            return new KnowledgeSearchResult[0];
         }
 
         try {
             float[] queryEmbedding = embeddingHandler.embed(query);
             if (queryEmbedding == null || queryEmbedding.length == 0) {
-                return new KnowledgeDocument[0];
+                return new KnowledgeSearchResult[0];
             }
+            int limit = Math.max(2, topK);
             VectorSearchResult<KnowledgeDocument>[] results = vectorDao.searchVectors(
                     KnowledgeDocument.class,
                     "embedding",
                     queryEmbedding,
-                    Math.max(3, topK)
+                    limit
             );
             if (results.length == 0) {
-                return new KnowledgeDocument[0];
+                return new KnowledgeSearchResult[0];
             }
-            KnowledgeDocument[] documents = new KnowledgeDocument[results.length];
+            KnowledgeSearchResult[] documents = new KnowledgeSearchResult[results.length];
             for  (int i = 0; i < results.length; i++) {
                 KnowledgeDocument document = results[i].getEntity();
-                documents[i] = document;
-                ILog.d(TAG, "sematicSearch", String.valueOf(results[i].getDistance()), document.title);
+                double distance = results[i].getDistance();
+                documents[i] = new KnowledgeSearchResult(document, distance);
+                ILog.d(TAG, "semanticSearch", String.valueOf(distance), document.title);
             }
             return documents;
         } catch (UnsupportedOperationException e) {
             ILog.d(TAG, "semanticSearch unsupported by vector DAO: " + e.getMessage());
-            return new KnowledgeDocument[0];
+            return new KnowledgeSearchResult[0];
         } catch (Exception e) {
             e.printStackTrace();
             ILog.d(TAG, "semanticSearch failed: " + e.getMessage());
-            return new KnowledgeDocument[0];
+            return new KnowledgeSearchResult[0];
         }
     }
 
     public KnowledgeDocument[] searchDocuments(String query, int topK) {
+        KnowledgeSearchResult[] results = searchDocumentResults(query, topK);
+        KnowledgeDocument[] documents = new KnowledgeDocument[results.length];
+        for (int i = 0; i < results.length; i++) {
+            documents[i] = results[i].getDocument();
+        }
+        return documents;
+    }
+
+    public KnowledgeSearchResult[] searchDocumentResults(String query, int topK) {
         return semanticSearch(query, topK);
     }
 
