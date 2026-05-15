@@ -175,7 +175,7 @@ public class LlamaCppProvider extends LlmProvider {
 
     @Override
     public EmbeddingResponse embeddings(EmbeddingRequest requestBody) {
-        ILog.d(TAG, "embeddings");
+        ILog.d(TAG, "embeddings", requestBody.getInput().toString());
         HttpRequest request = buildEmbeddingRequest(requestBody);
         try {
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());

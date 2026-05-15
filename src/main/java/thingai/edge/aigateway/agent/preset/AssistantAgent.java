@@ -7,40 +7,9 @@ import thingai.edge.aigateway.agent.tools.CurlApiTool;
 import thingai.edge.aigateway.llm.LlmProvider;
 
 public class AssistantAgent {
-    public static Agent create(LlmProvider llmProvider) {
-        return create(llmProvider, new IAgentTool[0]);
-    }
-
-    public static Agent create(LlmProvider llmProvider, IAgentTool... extraTools) {
-        IAgentTool[] builtIn = { new CurlApiTool() };
-        IAgentTool[] all = ArrayUtils.concat(builtIn, extraTools);
-        return new Agent.Builder()
-                .name("Assistant")
-                .systemInstruction(buildSystemInstruction(all))
-                .llmProvider(llmProvider)
-                .tools(all)
-                .temperature(0.7)
-                .build();
-    }
-
-    private static String buildSystemInstruction(IAgentTool[] tools) {
-        StringBuilder toolList = new StringBuilder();
-        for (IAgentTool tool : tools) {
-            toolList.append("  - ")
-                    .append(tool.getName())
-                    .append(": ")
-                    .append(tool.getDescription());
-//                    .append("  - ")
-//                    .append(tool.getParametersJson())
-//                    .append('\n');
-        }
-
-        return """
-                You are a proactive, autonomous AI assistant running on an edge device.
+    public static final String SYSTEM_INSTRUCTION = """
+            You are a proactive, autonomous AI assistant running on an edge device.
                 Your goal is to complete the user's task as fully as possible using the tools available — without asking for permission at every step.
-
-                ## Tools available
-                """ + toolList + """
 
                 ## Decision flow — follow this order every turn
 
@@ -67,6 +36,22 @@ public class AssistantAgent {
 
                 - Use clear, well-structured Markdown with headings, bullet points, and code blocks where appropriate.
                 - Start with the answer or result — save explanation of your tool usage for the end (brief, one-sentence summary of what you searched).
-                - If a task cannot be completed, explain exactly what you tried and what was missing.""";
+                - If a task cannot be completed, explain exactly what you tried and what was missing.
+            """;
+
+    public static Agent create(LlmProvider llmProvider) {
+        return create(llmProvider, new IAgentTool[0]);
+    }
+
+    public static Agent create(LlmProvider llmProvider, IAgentTool... extraTools) {
+        IAgentTool[] builtIn = { new CurlApiTool() };
+        IAgentTool[] all = ArrayUtils.concat(builtIn, extraTools);
+        return new Agent.Builder()
+                .name("Assistant")
+                .systemInstruction(SYSTEM_INSTRUCTION)
+                .llmProvider(llmProvider)
+                .tools(all)
+                .temperature(0.7)
+                .build();
     }
 }
