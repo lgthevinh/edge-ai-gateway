@@ -28,7 +28,7 @@ dependencies {
     implementation("com.google.code.gson:gson:2.13.2")
 
     // mcp core without json, use gson instead
-    implementation("io.modelcontextprotocol.sdk:mcp-core:1.1.1")
+    implementation("io.modelcontextprotocol.sdk:mcp-core:1.1.2")
 
     // javalin
     implementation("io.javalin:javalin:7.2.0")

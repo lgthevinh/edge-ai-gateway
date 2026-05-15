@@ -15,10 +15,6 @@ import java.net.URI;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Manages the lifecycle of a single MCP server process connected via stdio.
@@ -28,10 +24,6 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class McpServerConnection implements Closeable {
 
     private static final String TAG = "McpServerConnection";
-    private static final ExecutorService MCP_HTTP_EXECUTOR = Executors.newFixedThreadPool(
-            4,
-            daemonThreadFactory("mcp-http")
-    );
 
     private final String name;
     private final McpSyncClient client;
@@ -71,12 +63,11 @@ public class McpServerConnection implements Closeable {
         McpClientTransport transport = HttpClientStreamableHttpTransport
                 .builder(httpEndpoint.baseUri())
                 .endpoint(httpEndpoint.endpoint())
-                .customizeClient(builder -> builder.executor(MCP_HTTP_EXECUTOR))
                 .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
                     for (Map.Entry<String, String> header : headers.entrySet()) {
                         builder.header(header.getKey(), header.getValue());
                     }
-                    builder.timeout(Duration.ofSeconds(30L));
+                    builder.timeout(Duration.ofSeconds(30000L));
                 })
                 .jsonMapper(new McpGsonJsonMapper())
                 .build();
@@ -91,11 +82,19 @@ public class McpServerConnection implements Closeable {
     public static McpServerConnection connectSse(String name, String url, String endpoint,
                                                  boolean useUrlAsEndpoint, Map<String, String> headers) {
         HttpEndpoint httpEndpoint = resolveHttpEndpoint(url, endpoint, useUrlAsEndpoint);
+        ILog.d(TAG, "connectSse", "server='" + name + "', baseUri=" + httpEndpoint.baseUri()
+                + ", endpoint=" + httpEndpoint.endpoint()
+                + ", headerNames=" + headers.keySet());
         McpClientTransport transport = HttpClientSseClientTransport
                 .builder(httpEndpoint.baseUri())
                 .sseEndpoint(httpEndpoint.endpoint())
-                .customizeClient(builder -> builder.executor(MCP_HTTP_EXECUTOR))
+                .connectTimeout(Duration.ofSeconds(30L))
                 .httpRequestCustomizer((builder, method, endpoint1, body, context) -> {
+                    ILog.d(TAG, "connectSse", "request server='" + name
+                            + "', method=" + method
+                            + ", endpoint=" + safeEndpoint(endpoint1)
+                            + ", hasBody=" + (body != null)
+                            + ", headerNames=" + headers.keySet());
                     for (Map.Entry<String, String> header : headers.entrySet()) {
                         builder.header(header.getKey(), header.getValue());
                     }
@@ -111,25 +110,52 @@ public class McpServerConnection implements Closeable {
 
     @Override
     public void close() {
-        ILog.d(TAG, "close");
+        ILog.d(TAG, "close", "server='" + name + "'");
         try {
             client.closeGracefully();
             ILog.d(TAG, "Disconnected MCP server '" + name + "'");
         } catch (Exception e) {
-            ILog.d(TAG, "Error closing MCP server '" + name + "': " + e.getMessage());
+            ILog.d(TAG, "close", "server='" + name + "', error=" + e.getMessage() + "\n" + McpToolAdapter.stackTrace(e));
         }
     }
 
     private static McpServerConnection buildMcpClient(String name, McpClientTransport transport, String defaultPath) {
+        ILog.d(TAG, "buildMcpClient", "server='" + name
+                + "', transportClass=" + transport.getClass().getName());
         McpSyncClient client = McpClient.sync(transport)
                 .clientInfo(new McpSchema.Implementation("edge-ai-gateway", "1.0"))
                 .jsonSchemaValidator(new McpGsonJsonSchemaValidatorSupplier().get())
                 .build();
 
-        client.initialize();
-        List<McpSchema.Tool> tools = client.listTools().tools();
+        long initStart = System.nanoTime();
+        try {
+            ILog.d(TAG, "buildMcpClient", "initialize_start server='" + name + "'");
+            client.initialize();
+            ILog.d(TAG, "buildMcpClient", "initialize_done server='" + name
+                    + "', elapsedMs=" + elapsedMs(initStart));
+        } catch (Exception e) {
+            ILog.d(TAG, "buildMcpClient", "initialize_failed server='" + name
+                    + "', elapsedMs=" + elapsedMs(initStart)
+                    + ", error=" + e.getMessage() + "\n" + McpToolAdapter.stackTrace(e));
+            throw e;
+        }
+
+        long listToolsStart = System.nanoTime();
+        List<McpSchema.Tool> tools;
+        try {
+            ILog.d(TAG, "buildMcpClient", "list_tools_start server='" + name + "'");
+            tools = client.listTools().tools();
+            ILog.d(TAG, "buildMcpClient", "list_tools_done server='" + name
+                    + "', elapsedMs=" + elapsedMs(listToolsStart)
+                    + ", toolCount=" + tools.size());
+        } catch (Exception e) {
+            ILog.d(TAG, "buildMcpClient", "list_tools_failed server='" + name
+                    + "', elapsedMs=" + elapsedMs(listToolsStart)
+                    + ", error=" + e.getMessage() + "\n" + McpToolAdapter.stackTrace(e));
+            throw e;
+        }
         List<McpToolAdapter> adapters = tools.stream()
-                .map(t -> new McpToolAdapter(client, t, defaultPath))
+                .map(t -> new McpToolAdapter(name, client, t, defaultPath))
                 .toList();
 
         ILog.d(TAG, "buildMcpClient '" + name + "' — " + tools.size() + " tool(s): "
@@ -192,14 +218,17 @@ public class McpServerConnection implements Closeable {
         return endpoint.startsWith("/") ? endpoint : "/" + endpoint;
     }
 
+    private static long elapsedMs(long startedAtNanos) {
+        return Duration.ofNanos(System.nanoTime() - startedAtNanos).toMillis();
+    }
+
+    private static String safeEndpoint(Object endpoint) {
+        if (endpoint == null) return "null";
+        String value = String.valueOf(endpoint);
+        int queryStart = value.indexOf('?');
+        return queryStart >= 0 ? value.substring(0, queryStart) + "?..." : value;
+    }
+
     private record HttpEndpoint(String baseUri, String endpoint) {}
 
-    private static ThreadFactory daemonThreadFactory(String prefix) {
-        AtomicInteger counter = new AtomicInteger();
-        return runnable -> {
-            Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        };
-    }
 }

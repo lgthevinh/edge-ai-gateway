@@ -4,6 +4,15 @@
 
 AI agents/agentic service running with local LLM inference (on the edge). Exposes REST/WebSocket API for service integration.
 
+## RK Llama cpp 
+Enable this before start
+```bash
+echo performance | sudo tee /sys/bus/cpu/devices/cpu[0-7]/cpufreq/scaling_governor
+echo performance | sudo tee /sys/class/devfreq/fb000000.gpu/governor
+echo performance | sudo tee /sys/devices/platform/dmc/devfreq/dmc/governor
+echo performance | sudo tee /sys/class/devfreq/fdab0000.npu/governor
+```
+
 ## Tech Stack
 
 | Layer | Choice |

@@ -27,22 +27,15 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
 public class LlamaCppProvider extends LlmProvider {
     private static final String TAG = "LlamaCppProvider";
-    private static final ExecutorService LLM_HTTP_EXECUTOR = Executors.newFixedThreadPool(
-            8,
-            daemonThreadFactory("llm-http")
-    );
 
     private static final HttpClient httpClient = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(30))
-            .executor(LLM_HTTP_EXECUTOR)
             .build();
 
     private final String apiKey;
@@ -80,16 +73,41 @@ public class LlamaCppProvider extends LlmProvider {
         AtomicReference<String> finishReason = new AtomicReference<>("stop");
         TreeMap<Integer, StreamingToolCall> toolCalls = new TreeMap<>();
         CompletableFuture<Response> promise = new CompletableFuture<>();
+        AtomicBoolean sawDone = new AtomicBoolean(false);
+        AtomicBoolean sawFirstLine = new AtomicBoolean(false);
+        AtomicInteger lineCount = new AtomicInteger();
+        long startedAt = System.nanoTime();
 
-        ILog.d(TAG, Arrays.toString(content.getMessages()));
-        ILog.d(TAG, "header", request.headers().toString());
+        CompletableFuture<HttpResponse<java.util.stream.Stream<String>>> httpFuture =
+                httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines());
 
-        httpClient.sendAsync(request, HttpResponse.BodyHandlers.ofLines())
-                .thenAccept(response -> response.body().forEach(line -> {
+        httpFuture.thenAccept(response -> {
+                    ILog.d(TAG, "chatCompletionAsync", "response_status=" + response.statusCode()
+                            + ", elapsedMs=" + elapsedMs(startedAt));
+                    if (response.statusCode() < 200 || response.statusCode() >= 300) {
+                        String errorBody = collectStreamBody(response.body(), 20);
+                        ILog.d(TAG, "chatCompletionAsync", "error_body=" + truncate(errorBody));
+                        Exception e = new Exception("LLM stream request failed with HTTP " + response.statusCode()
+                                + ": " + errorBody);
+                        callback.onError(e);
+                        promise.completeExceptionally(e);
+                        return;
+                    }
+
+                    response.body().forEach(line -> {
+                    int currentLine = lineCount.incrementAndGet();
+                    if (sawFirstLine.compareAndSet(false, true)) {
+                        ILog.d(TAG, "chatCompletionAsync", "first_stream_line elapsedMs=" + elapsedMs(startedAt)
+                                + ", line=" + truncate(line));
+                    } else if (currentLine % 100 == 0) {
+                        ILog.d(TAG, "chatCompletionAsync", "stream_progress lines=" + currentLine
+                                + ", elapsedMs=" + elapsedMs(startedAt));
+                    }
                     if (!line.startsWith("data: ")) return;
                     String data = line.substring(6).trim();
 
                     if (data.equals("[DONE]")) {
+                        sawDone.set(true);
                         String text = fullText.toString();
                         ILog.d(TAG, "chatCompletionAsync", "text: " + text.trim());
                         callback.onComplete(text);
@@ -132,7 +150,18 @@ public class LlamaCppProvider extends LlmProvider {
                     } catch (Exception e) {
                         ILog.d(TAG, "chatCompletionAsync: " + e.getMessage());
                     }
-                }))
+                    });
+
+                    if (!sawDone.get() && !promise.isDone()) {
+                        String text = fullText.toString();
+                        ILog.d(TAG, "chatCompletionAsync", "stream_closed_without_done lines=" + lineCount.get()
+                                + ", elapsedMs=" + elapsedMs(startedAt)
+                                + ", textChars=" + text.length()
+                                + ", toolCallCount=" + toolCalls.size());
+                        callback.onComplete(text);
+                        promise.complete(buildResponse(text, finishReason.get(), usage.get(), toToolCalls(toolCalls)));
+                    }
+                })
                 .exceptionally(e -> {
                     Exception ex = new Exception(e);
                     ILog.d(TAG, "chatCompletionAsync exception HttpClient", ex.getMessage());
@@ -181,6 +210,7 @@ public class LlamaCppProvider extends LlmProvider {
         map.put("messages", content.getMessages());
         map.put("temperature", content.getTemperature());
         map.put("stream", stream);
+        map.put("enable_thinking", false);
         if (stream) {
             map.put("stream_options", Map.of("include_usage", true));
         }
@@ -189,6 +219,10 @@ public class LlamaCppProvider extends LlmProvider {
             map.put("tool_choice", content.getToolChoice());
         }
         String json = JsonUtil.toJson(map);
+        ILog.d(TAG, "buildRequest", "stream=" + stream
+                + ", messageCount=" + (content.getMessages() != null ? content.getMessages().length : 0)
+                + ", toolCount=" + (content.getTools() != null ? content.getTools().length : 0)
+                + ", bodyChars=" + json.length());
         return HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + "/chat/completions"))
                 .header("Content-Type", "application/json")
@@ -229,6 +263,24 @@ public class LlamaCppProvider extends LlmProvider {
             response.setUsage(usage);
         }
         usage.applyTimings(response.getTimings());
+    }
+
+    private long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    private String truncate(String value) {
+        if (value == null || value.length() <= 500) return value;
+        return value.substring(0, 500) + "...[TRUNCATED " + (value.length() - 500) + " chars]";
+    }
+
+    private String collectStreamBody(java.util.stream.Stream<String> lines, int maxLines) {
+        StringBuilder body = new StringBuilder();
+        lines.limit(maxLines).forEach(line -> {
+            if (body.length() > 0) body.append('\n');
+            body.append(line);
+        });
+        return body.toString();
     }
 
     private void mergeToolCalls(TreeMap<Integer, StreamingToolCall> accumulated, com.google.gson.JsonArray deltas) {
@@ -274,14 +326,5 @@ public class LlamaCppProvider extends LlmProvider {
         private String type;
         private String name;
         private final StringBuilder arguments = new StringBuilder();
-    }
-
-    private static ThreadFactory daemonThreadFactory(String prefix) {
-        AtomicInteger counter = new AtomicInteger();
-        return runnable -> {
-            Thread thread = new Thread(runnable, prefix + "-" + counter.incrementAndGet());
-            thread.setDaemon(true);
-            return thread;
-        };
     }
 }

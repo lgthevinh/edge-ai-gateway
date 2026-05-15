@@ -22,16 +22,24 @@ import java.util.Map;
 public class McpToolAdapter implements IAgentTool {
     private static final String TAG = "McpToolAdapter";
 
+    private final String serverName;
+    private final String exposedName;
     private final McpSyncClient client;
     private final McpSchema.Tool tool;
     private final String defaultPath;
     private final Gson gson = new Gson();
 
     public McpToolAdapter(McpSyncClient client, McpSchema.Tool tool) {
-        this(client, tool, null);
+        this(null, client, tool, null);
     }
 
     public McpToolAdapter(McpSyncClient client, McpSchema.Tool tool, String defaultPath) {
+        this(null, client, tool, defaultPath);
+    }
+
+    public McpToolAdapter(String serverName, McpSyncClient client, McpSchema.Tool tool, String defaultPath) {
+        this.serverName = serverName;
+        this.exposedName = exposedToolName(serverName, tool.name());
         this.client = client;
         this.tool = tool;
         this.defaultPath = defaultPath;
@@ -39,12 +47,18 @@ public class McpToolAdapter implements IAgentTool {
 
     @Override
     public String getName() {
-        return tool.name();
+        return exposedName;
     }
 
     @Override
     public String getDescription() {
-        return tool.description() != null ? tool.description() : "";
+        String description = tool.description() != null ? tool.description() : "";
+        if (!exposedName.equals(tool.name())) {
+            return description.isBlank()
+                    ? "MCP tool '" + tool.name() + "' from server '" + displayServerName() + "'."
+                    : description + " Upstream MCP method: " + tool.name() + ".";
+        }
+        return description;
     }
 
     /**
@@ -83,23 +97,34 @@ public class McpToolAdapter implements IAgentTool {
      */
     @Override
     public String execute(String paramsJson) {
-        ILog.d(TAG, "execute", "call_start tool='" + tool.name() + "', params=" + paramsJson);
+        long startedAt = System.nanoTime();
+        ILog.d(TAG, "execute", "call_start server='" + displayServerName()
+                + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                + "', params=" + paramsJson);
         try {
             Map<String, Object> args = normalizeArguments(tool.name(), paramsJson, defaultPath);
-            ILog.d(TAG, "execute", "args_parsed tool='" + tool.name() + "', args=" + gson.toJson(args));
+            ILog.d(TAG, "execute", "args_parsed server='" + displayServerName()
+                    + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                    + "', args=" + gson.toJson(args));
 
             String validationError = validateRequiredArguments(tool.name(), args, defaultPath);
             if (validationError != null) {
                 JsonObject error = new JsonObject();
                 error.addProperty("error", validationError);
-                ILog.d(TAG, "execute", "return_validation_error tool='" + tool.name() + "', error=" + error);
+                ILog.d(TAG, "execute", "return_validation_error server='" + displayServerName()
+                        + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                        + "', elapsedMs=" + elapsedMs(startedAt)
+                        + ", error=" + error);
                 return gson.toJson(error);
             }
 
             McpSchema.CallToolResult result = client.callTool(
                     new McpSchema.CallToolRequest(tool.name(), args)
             );
-            ILog.d(TAG, "execute", "call_result tool='" + tool.name() + "', isError="
+            ILog.d(TAG, "execute", "call_result server='" + displayServerName()
+                    + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                    + "', elapsedMs=" + elapsedMs(startedAt)
+                    + ", isError="
                     + result.isError()
                     + ", contentCount=" + (result.content() != null ? result.content().size() : 0)
                     + ", structuredContent=" + gson.toJson(result.structuredContent()));
@@ -110,17 +135,26 @@ public class McpToolAdapter implements IAgentTool {
             if (Boolean.TRUE.equals(result.isError())) {
                 JsonObject error = new JsonObject();
                 error.addProperty("error", cleanMcpError(extractText(result.content())));
-                ILog.d(TAG, "execute", "return_error tool='" + tool.name() + "', error=" + error);
+                ILog.d(TAG, "execute", "return_error server='" + displayServerName()
+                        + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                        + "', elapsedMs=" + elapsedMs(startedAt)
+                        + ", error=" + error);
                 return gson.toJson(error);
             }
 
             JsonObject out = new JsonObject();
             out.addProperty("result", extractText(result.content()));
-            ILog.d(TAG, "execute", "return_result tool='" + tool.name() + "', result=" + out);
+            ILog.d(TAG, "execute", "return_result server='" + displayServerName()
+                    + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                    + "', elapsedMs=" + elapsedMs(startedAt)
+                    + ", result=" + out);
             return gson.toJson(out);
 
         } catch (Exception e) {
-            ILog.d(TAG, "execute", "call_failed tool='" + tool.name() + "', error=" + e.getMessage() + "\n" + stackTrace(e));
+            ILog.d(TAG, "execute", "call_failed server='" + displayServerName()
+                    + "', exposedTool='" + exposedName + "', upstreamTool='" + tool.name()
+                    + "', elapsedMs=" + elapsedMs(startedAt)
+                    + ", error=" + e.getMessage() + "\n" + stackTrace(e));
             JsonObject error = new JsonObject();
             error.addProperty("error", e.getMessage() != null ? e.getMessage() : "unknown error");
             return gson.toJson(error);
@@ -181,6 +215,34 @@ public class McpToolAdapter implements IAgentTool {
         return value == null || value.trim().isEmpty();
     }
 
+    private static String exposedToolName(String serverName, String upstreamName) {
+        String sanitized = sanitizeToolName(upstreamName);
+        if (requiresSafeAlias(sanitized)) {
+            String serverPrefix = sanitizeToolName(serverName);
+            if (isBlank(serverPrefix)) serverPrefix = "mcp";
+            return serverPrefix + "_" + sanitized;
+        }
+        return sanitized;
+    }
+
+    private static boolean requiresSafeAlias(String toolName) {
+        return "search".equals(toolName);
+    }
+
+    private static String sanitizeToolName(String value) {
+        if (value == null) return "";
+        String sanitized = value.trim()
+                .replaceAll("[^A-Za-z0-9_-]", "_")
+                .replaceAll("_+", "_");
+        while (sanitized.startsWith("_") || sanitized.startsWith("-")) {
+            sanitized = sanitized.substring(1);
+        }
+        while (sanitized.endsWith("_") || sanitized.endsWith("-")) {
+            sanitized = sanitized.substring(0, sanitized.length() - 1);
+        }
+        return sanitized;
+    }
+
     private static String cleanMcpError(String text) {
         if (isBlank(text)) return "MCP tool returned an error.";
         if (text.contains("Invalid arguments")) {
@@ -203,18 +265,28 @@ public class McpToolAdapter implements IAgentTool {
 
     private void logContentItems(List<McpSchema.Content> content) {
         if (content == null) {
-            ILog.d(TAG, "logContentItems", "content_null tool='" + tool.name() + "'");
+            ILog.d(TAG, "logContentItems", "content_null server='" + displayServerName()
+                    + "', tool='" + tool.name() + "'");
             return;
         }
         for (int i = 0; i < content.size(); i++) {
             McpSchema.Content item = content.get(i);
-            ILog.d(TAG, "logContentItems", "content_item tool='" + tool.name() + "', index=" + i + ", type="
+            ILog.d(TAG, "logContentItems", "content_item server='" + displayServerName()
+                    + "', tool='" + tool.name() + "', index=" + i + ", type="
                     + (item != null ? item.getClass().getName() : "null")
                     + ", value=" + gson.toJson(item));
         }
     }
 
-    private String stackTrace(Exception e) {
+    private String displayServerName() {
+        return serverName != null ? serverName : "unknown";
+    }
+
+    private static long elapsedMs(long startedAtNanos) {
+        return (System.nanoTime() - startedAtNanos) / 1_000_000L;
+    }
+
+    static String stackTrace(Exception e) {
         StringWriter sw = new StringWriter();
         e.printStackTrace(new PrintWriter(sw));
         return sw.toString();
