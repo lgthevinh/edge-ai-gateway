@@ -13,6 +13,8 @@ import thingai.edge.aigateway.utils.JsonUtil;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+
+import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
@@ -164,7 +166,7 @@ public class RouteAgent implements EndpointGroup {
         }
 
         JsonArray history = body.getAsJsonArray("history");
-        java.util.ArrayList<Message> messages = new java.util.ArrayList<>();
+        ArrayList<Message> messages = new ArrayList<>();
         for (JsonElement element : history) {
             if (!element.isJsonObject()) continue;
             JsonObject item = element.getAsJsonObject();
@@ -176,7 +178,7 @@ public class RouteAgent implements EndpointGroup {
 
             if (MessageRole.USER.equals(role)) {
                 messages.add(new Message(MessageRole.USER, content));
-            } else if (MessageRole.MODEL.equals(role) || "model".equals(role)) {
+            } else if (MessageRole.MODEL.equals(role)) {
                 messages.add(new Message(MessageRole.MODEL, content));
             }
         }
