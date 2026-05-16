@@ -8,15 +8,15 @@ import org.thingai.sdk.ai.vector.dao.DaoVectorSqlite;
 import org.thingai.sdk.ai.vector.define.DistanceMetric;
 import thingai.edge.aigateway.agent.AgentOrchestrator;
 import thingai.edge.aigateway.agent.IAgentTool;
+import thingai.edge.aigateway.agent.knowledge.KnowledgeSystemInstructionProvider;
 import thingai.edge.aigateway.agent.mcp.McpRegistry;
 import thingai.edge.aigateway.agent.preset.AssistantAgent;
-import thingai.edge.aigateway.agent.tools.CurlApiTool;
-import thingai.edge.aigateway.agent.tools.ListDocumentsTool;
-import thingai.edge.aigateway.agent.tools.ReadDocumentTool;
 import thingai.edge.aigateway.agent.tools.SearchDocumentsTool;
 import thingai.edge.aigateway.handler.embedding.EmbeddingHandler;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
+import thingai.edge.aigateway.handler.rag.RagChunk;
+import thingai.edge.aigateway.handler.rag.RagHandler;
 import thingai.edge.aigateway.llm.LlamaCppProvider;
 import thingai.edge.aigateway.handler.session.Session;
 import thingai.edge.aigateway.handler.session.SessionMessage;
@@ -30,6 +30,7 @@ import java.util.Map;
 public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
     private static final int DEFAULT_EMBEDDING_DIMENSIONS = 1536;
+    private static final int DEFAULT_KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS = 12_000;
 
     private Dao dao;
     private String llamaServerUrl;
@@ -39,6 +40,7 @@ public class EdgeAiGateway extends Service {
     private static LlamaCppProvider embeddingProvider;
     private static AgentOrchestrator agentOrchestrator;
     private static KnowledgeHandler knowledgeHandler;
+    private static RagHandler ragHandler;
     private static String configuredLlamaServerUrl;
 
     protected EdgeAiGateway() {
@@ -66,6 +68,10 @@ public class EdgeAiGateway extends Service {
                 env.get("EMBEDDING_DIMENSIONS"),
                 DEFAULT_EMBEDDING_DIMENSIONS
         );
+        int knowledgeSystemContextMaxChars = parseInt(
+                env.get("KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS"),
+                DEFAULT_KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS
+        );
         configuredLlamaServerUrl = llamaServerUrl;
 
         // init dao
@@ -74,10 +80,11 @@ public class EdgeAiGateway extends Service {
         dao.initDao(new Class[] {
                 Session.class,
                 SessionMessage.class,
-                KnowledgeDocument.class
+                KnowledgeDocument.class,
+                RagChunk.class
         });
         vectorDao.initVectorSearch(
-                KnowledgeDocument.class,
+                RagChunk.class,
                 "embedding",
                 embeddingDimensions,
                 DistanceMetric.COSINE
@@ -86,25 +93,27 @@ public class EdgeAiGateway extends Service {
         embeddingProvider = new LlamaCppProvider(embeddingServerUrl, apiKey, embeddingModel);
         ILog.d(TAG, "onServiceInit", "embedding provider initialized model=" + embeddingModel
                 + " dimensions=" + embeddingDimensions);
-        ILog.d(TAG, "onServiceInit", "knowledge vector search initialized dimensions=" + embeddingDimensions);
+        ILog.d(TAG, "onServiceInit", "RAG chunk vector search initialized dimensions=" + embeddingDimensions);
 
-        knowledgeHandler = new KnowledgeHandler(
-                dao,
-                new EmbeddingHandler(embeddingProvider, embeddingModel, embeddingDimensions)
-        );
+        knowledgeHandler = new KnowledgeHandler(dao);
 
         mcpRegistry = new McpRegistry();
         mcpRegistry.loadConfig("mcp-servers.json");
+        ragHandler = new RagHandler(
+                dao,
+                new EmbeddingHandler(embeddingProvider, embeddingModel, embeddingDimensions)
+        );
         IAgentTool[] documentTools = new IAgentTool[] {
-                new SearchDocumentsTool(knowledgeHandler),
-                new ListDocumentsTool(knowledgeHandler),
-                new ReadDocumentTool(knowledgeHandler),
-                new CurlApiTool()
+                new SearchDocumentsTool(ragHandler)
         };
         IAgentTool[] extraTools = ArrayUtils.concat(documentTools, mcpRegistry.getAllTools());
         agentOrchestrator = new AgentOrchestrator(
                 dao,
-                AssistantAgent.create(llamaCppProvider, extraTools)
+                AssistantAgent.create(
+                        llamaCppProvider,
+                        new KnowledgeSystemInstructionProvider(knowledgeHandler, knowledgeSystemContextMaxChars),
+                        extraTools
+                )
         );
 
         ILog.d(TAG, "onServiceInit", "gateway runtime initialized");
@@ -157,6 +166,13 @@ public class EdgeAiGateway extends Service {
         return knowledgeHandler;
     }
 
+    public static RagHandler getRagHandler() {
+        if (ragHandler == null) {
+            throw new IllegalStateException("EdgeAiGateway has not initialized RagHandler");
+        }
+        return ragHandler;
+    }
+
     public static String getLlamaServerUrlStatic() {
         if (configuredLlamaServerUrl == null) {
             throw new IllegalStateException("EdgeAiGateway has not initialized llama server URL");
@@ -174,6 +190,7 @@ public class EdgeAiGateway extends Service {
         llamaCppProvider = null;
         embeddingProvider = null;
         knowledgeHandler = null;
+        ragHandler = null;
         configuredLlamaServerUrl = null;
     }
 

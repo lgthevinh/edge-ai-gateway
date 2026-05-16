@@ -6,7 +6,6 @@ import io.javalin.apibuilder.EndpointGroup;
 import thingai.edge.aigateway.EdgeAiGateway;
 import thingai.edge.aigateway.handler.knowledge.DocumentImportResult;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
-import thingai.edge.aigateway.handler.knowledge.KnowledgeSearchResult;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import static io.javalin.apibuilder.ApiBuilder.delete;
@@ -60,32 +59,6 @@ public class RouteDocuments implements EndpointGroup {
             post("/refresh", ctx -> {
                 DocumentImportResult importResult = EdgeAiGateway.getKnowledgeHandler().importMarkdownDocuments();
                 ctx.json(JsonUtil.toJson(importResult));
-            });
-
-            post("/search", ctx -> {
-                try {
-                    JsonObject body = JsonUtil.fromJson(ctx.body(), JsonObject.class);
-                    if (body == null || !body.has("query")) {
-                        ctx.status(400).result("{\"error\":\"query is required\"}");
-                        return;
-                    }
-
-                    String query = body.get("query").getAsString();
-                    int topK = body.has("top_k") ? body.get("top_k").getAsInt() : 5;
-                    JsonArray documents = new JsonArray();
-                    for (KnowledgeSearchResult searchResult : EdgeAiGateway.getKnowledgeHandler().searchDocumentResults(query, topK)) {
-                        documents.add(toSearchJson(searchResult));
-                    }
-
-                    JsonObject result = new JsonObject();
-                    result.addProperty("query", query);
-                    result.add("documents", documents);
-                    ctx.json(JsonUtil.toJson(result));
-                } catch (Exception e) {
-                    JsonObject error = new JsonObject();
-                    error.addProperty("error", e.getMessage());
-                    ctx.status(500).json(JsonUtil.toJson(error));
-                }
             });
 
             post("/upload", ctx -> {
@@ -149,9 +122,4 @@ public class RouteDocuments implements EndpointGroup {
         return item;
     }
 
-    private static JsonObject toSearchJson(KnowledgeSearchResult result) {
-        JsonObject item = toSummaryJson(result.getDocument());
-        item.addProperty("distance", result.getDistance());
-        return item;
-    }
 }

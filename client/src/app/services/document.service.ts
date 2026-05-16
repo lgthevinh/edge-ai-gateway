@@ -80,18 +80,15 @@ export class DocumentService {
   }
 
   async searchDocuments(query: string, topK = 5): Promise<DocumentSearchResult> {
-    const fetchFn = this.getFetch('Knowledge search is only available in the browser.');
-
-    const response = await fetchFn('/api/documents/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query, top_k: topK })
-    });
-
-    if (!response.ok) {
-      throw new Error(await response.text());
-    }
-    return await response.json() as DocumentSearchResult;
+    const normalizedQuery = query.trim().toLowerCase();
+    const result = await this.listDocuments();
+    const documents = normalizedQuery
+      ? result.documents.filter((document) =>
+          document.title.toLowerCase().includes(normalizedQuery) ||
+          document.description.toLowerCase().includes(normalizedQuery)
+        )
+      : result.documents;
+    return { query, documents: documents.slice(0, topK) };
   }
 
   confirm(message: string): boolean {

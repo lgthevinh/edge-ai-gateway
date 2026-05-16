@@ -21,6 +21,7 @@ public class Agent {
 
     private final String name;
     private final String systemInstruction;
+    private final SystemInstructionProvider systemInstructionProvider;
     private final LlmProvider llmProvider;
     private final IAgentTool[] tools;
     private final double temperature;
@@ -28,6 +29,9 @@ public class Agent {
     private Agent(Builder builder) {
         this.name = builder.name;
         this.systemInstruction = builder.systemInstruction;
+        this.systemInstructionProvider = builder.systemInstructionProvider != null
+                ? builder.systemInstructionProvider
+                : SystemInstructionProvider.identity();
         this.llmProvider = builder.llmProvider;
         this.tools = builder.tools;
         this.temperature = builder.temperature;
@@ -43,7 +47,7 @@ public class Agent {
      * Builds the full message list: system instruction prepended, user message appended.
      */
     public Message[] buildMessages(Message[] history, String userInput) {
-        Message systemMsg = new Message(MessageRole.SYSTEM, systemInstruction);
+        Message systemMsg = new Message(MessageRole.SYSTEM, systemInstructionProvider.build(systemInstruction));
         Message[] withSystem = prepend(systemMsg, history);
         Message userMsg = new Message(MessageRole.USER, userInput);
         return append(withSystem, userMsg);
@@ -153,12 +157,14 @@ public class Agent {
     public static class Builder {
         private String name;
         private String systemInstruction;
+        private SystemInstructionProvider systemInstructionProvider;
         private LlmProvider llmProvider;
         private IAgentTool[] tools;
         private double temperature = 0.7;
 
         public Builder name(String name) { this.name = name; return this; }
         public Builder systemInstruction(String s) { this.systemInstruction = s; return this; }
+        public Builder systemInstructionProvider(SystemInstructionProvider p) { this.systemInstructionProvider = p; return this; }
         public Builder llmProvider(LlmProvider p) { this.llmProvider = p; return this; }
         public Builder tools(IAgentTool... tools) { this.tools = tools; return this; }
         public Builder temperature(double t) { this.temperature = t; return this; }

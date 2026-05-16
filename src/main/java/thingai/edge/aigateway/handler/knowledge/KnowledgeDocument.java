@@ -2,7 +2,6 @@ package thingai.edge.aigateway.handler.knowledge;
 
 import org.thingai.base.dao.annotations.DaoColumn;
 import org.thingai.base.dao.annotations.DaoTable;
-import org.thingai.sdk.ai.vector.dao.DaoEmbedding;
 
 @DaoTable(name = "knowledge_documents", version = 3)
 public class KnowledgeDocument {
@@ -15,10 +14,6 @@ public class KnowledgeDocument {
 
     @DaoColumn(name = "content")
     public String content;
-
-    @DaoColumn(name = "embedding")
-    @DaoEmbedding
-    public float[] embedding;
 
     @DaoColumn(name = "created_at", nullable = false)
     public long createdAt;

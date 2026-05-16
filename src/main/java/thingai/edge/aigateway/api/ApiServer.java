@@ -5,6 +5,7 @@ import io.javalin.http.staticfiles.Location;
 import thingai.edge.aigateway.api.routes.RouteAgent;
 import thingai.edge.aigateway.api.routes.RouteChat;
 import thingai.edge.aigateway.api.routes.RouteDocuments;
+import thingai.edge.aigateway.api.routes.RouteRag;
 import thingai.edge.aigateway.api.routes.RouteRoot;
 
 import static io.javalin.apibuilder.ApiBuilder.path;
@@ -32,6 +33,7 @@ public class ApiServer {
                 new RouteRoot().addEndpoints();
                 new RouteChat().addEndpoints();
                 new RouteDocuments().addEndpoints();
+                new RouteRag().addEndpoints();
                 routeAgent.addEndpoints();
             }));
             config.routes.sse("/api/agent/chat/stream", routeAgent.sseHandler());

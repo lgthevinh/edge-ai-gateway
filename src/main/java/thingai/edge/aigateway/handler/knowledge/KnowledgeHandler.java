@@ -2,9 +2,6 @@ package thingai.edge.aigateway.handler.knowledge;
 
 import org.thingai.base.dao.Dao;
 import org.thingai.base.log.ILog;
-import org.thingai.sdk.ai.vector.dao.DaoVectorSqlite;
-import org.thingai.sdk.ai.vector.define.VectorSearchResult;
-import thingai.edge.aigateway.handler.embedding.EmbeddingHandler;
 
 import java.util.Arrays;
 import java.util.Comparator;
@@ -12,26 +9,27 @@ import java.util.Objects;
 
 public class KnowledgeHandler {
     private static final String TAG = "KnowledgeHandler";
+    private static final String SYSTEM_CONTEXT_HEADER = """
+            ## Knowledge Base
+
+            The following saved knowledge is already available as grounding context. Use it directly when relevant. If a question needs details that are not present here, use the RAG search tool.
+            """.stripIndent();
 
     private final Dao dao;
-    private final EmbeddingHandler embeddingHandler;
 
     public KnowledgeHandler(Dao dao) {
-        this(dao, null);
-    }
-
-    public KnowledgeHandler(Dao dao, EmbeddingHandler embeddingHandler) {
         if (dao == null) {
             throw new IllegalArgumentException("dao is required");
         }
         this.dao = dao;
-        this.embeddingHandler = embeddingHandler;
     }
 
     public KnowledgeDocument[] listDocuments() {
         KnowledgeDocument[] documents = dao.readAll(KnowledgeDocument.class);
         if (documents == null) return new KnowledgeDocument[0];
-        Arrays.sort(documents, Comparator.comparing(d -> d.title == null ? "" : d.title));
+        Arrays.sort(documents, Comparator
+                .comparingLong((KnowledgeDocument d) -> d.createdAt)
+                .thenComparing(d -> d.title == null ? "" : d.title));
         return documents;
     }
 
@@ -77,93 +75,62 @@ public class KnowledgeHandler {
                 existing != null ? existing.createdAt : now,
                 now
         );
-        if (existing != null && Objects.equals(description, existing.description)) {
-            document.embedding = existing.embedding;
-        }
-        embedDocument(document, existing);
         dao.insertOrUpdate(document);
         return document;
     }
 
-    public KnowledgeSearchResult[] semanticSearch(String query, int topK) {
-        if (query == null || query.isBlank()) return new KnowledgeSearchResult[0];
-        if (embeddingHandler == null) {
-            ILog.d(TAG, "semanticSearch skipped: embedding handler is not configured");
-            return new KnowledgeSearchResult[0];
-        }
-        if (!(dao instanceof DaoVectorSqlite vectorDao)) {
-            ILog.d(TAG, "semanticSearch skipped: dao does not support vector search");
-            return new KnowledgeSearchResult[0];
+    public String buildSystemInstructionContext(int maxChars) {
+        if (maxChars <= 0) return "";
+        KnowledgeDocument[] documents = listDocuments();
+        if (documents.length == 0) return "";
+
+        StringBuilder documentsContext = new StringBuilder();
+        for (KnowledgeDocument document : documents) {
+            if (document == null || isBlank(document.title) || isBlank(document.content)) {
+                continue;
+            }
+
+            String block = "\n\n### " + document.title.trim()
+                    + "\nDescription: " + safeTrim(document.description)
+                    + "\nContent:\n" + document.content.trim();
+            if (!appendWithLimit(documentsContext, block, maxChars)) {
+                ILog.d(TAG, "buildSystemInstructionContext", "truncated at maxChars=" + maxChars);
+                break;
+            }
         }
 
-        try {
-            float[] queryEmbedding = embeddingHandler.embed(query);
-            if (queryEmbedding == null || queryEmbedding.length == 0) {
-                return new KnowledgeSearchResult[0];
-            }
-            int limit = Math.max(2, topK);
-            VectorSearchResult<KnowledgeDocument>[] results = vectorDao.searchVectors(
-                    KnowledgeDocument.class,
-                    "embedding",
-                    queryEmbedding,
-                    limit
-            );
-            if (results.length == 0) {
-                return new KnowledgeSearchResult[0];
-            }
-            KnowledgeSearchResult[] documents = new KnowledgeSearchResult[results.length];
-            for  (int i = 0; i < results.length; i++) {
-                KnowledgeDocument document = results[i].getEntity();
-                double distance = results[i].getDistance();
-                documents[i] = new KnowledgeSearchResult(document, distance);
-                ILog.d(TAG, "semanticSearch", String.valueOf(distance), document.title);
-            }
-            return documents;
-        } catch (UnsupportedOperationException e) {
-            ILog.d(TAG, "semanticSearch unsupported by vector DAO: " + e.getMessage());
-            return new KnowledgeSearchResult[0];
-        } catch (Exception e) {
-            e.printStackTrace();
-            ILog.d(TAG, "semanticSearch failed: " + e.getMessage());
-            return new KnowledgeSearchResult[0];
-        }
-    }
+        if (documentsContext.isEmpty()) return "";
 
-    public KnowledgeDocument[] searchDocuments(String query, int topK) {
-        KnowledgeSearchResult[] results = searchDocumentResults(query, topK);
-        KnowledgeDocument[] documents = new KnowledgeDocument[results.length];
-        for (int i = 0; i < results.length; i++) {
-            documents[i] = results[i].getDocument();
-        }
-        return documents;
-    }
-
-    public KnowledgeSearchResult[] searchDocumentResults(String query, int topK) {
-        return semanticSearch(query, topK);
+        StringBuilder context = new StringBuilder();
+        appendWithLimit(context, SYSTEM_CONTEXT_HEADER.trim(), maxChars);
+        appendWithLimit(context, documentsContext.toString(), maxChars);
+        return context.toString();
     }
 
     public DocumentImportResult importMarkdownDocuments() {
         return new DocumentImportResult();
     }
 
-    private void embedDocument(KnowledgeDocument document, KnowledgeDocument existing) {
-        if (embeddingHandler == null) return;
-        try {
-            boolean metadataChanged = existing == null
-                    || !Objects.equals(document.title, existing.title)
-                    || !Objects.equals(document.description, existing.description);
-            if (!metadataChanged && document.embedding != null && document.embedding.length > 0) {
-                return;
-            }
-            document.embedding = embeddingHandler.embed(buildDocumentEmbeddingInput(document));
-        } catch (Exception e) {
-            ILog.d(TAG, "embedDocument failed for " + document.title + ": " + e.getMessage());
+    private static boolean appendWithLimit(StringBuilder builder, String value, int maxChars) {
+        if (value == null || value.isEmpty() || builder.length() >= maxChars) {
+            return builder.length() < maxChars;
         }
+        int remaining = maxChars - builder.length();
+        if (value.length() <= remaining) {
+            builder.append(value);
+            return true;
+        }
+        if (remaining > 0) {
+            builder.append(value, 0, remaining);
+        }
+        return false;
     }
 
-    private String buildDocumentEmbeddingInput(KnowledgeDocument document) {
-        String title = document.title == null ? "" : document.title.trim();
-        String description = document.description == null ? "" : document.description.trim();
-        return "Title: " + title + "\nDescription: " + description;
+    private static String safeTrim(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private static boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
     }
 }

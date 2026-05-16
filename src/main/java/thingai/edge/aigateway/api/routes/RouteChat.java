@@ -24,7 +24,7 @@ public class RouteChat implements EndpointGroup {
 
     @Override
     public void addEndpoints() {
-        path("chat", () -> {
+        path("v1/chat", () -> {
             post(ctx -> {
                 String body = ctx.body();
                 String auth = ctx.header("Authorization");
