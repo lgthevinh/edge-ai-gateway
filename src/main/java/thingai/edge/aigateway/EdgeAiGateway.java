@@ -30,7 +30,7 @@ import java.util.Map;
 public class EdgeAiGateway extends Service {
     private static final String TAG = "EdgeAiGateway";
     private static final int DEFAULT_EMBEDDING_DIMENSIONS = 1536;
-    private static final int DEFAULT_KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS = 12_000;
+    private static final int DEFAULT_KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS = 64_000; //64k context windows
 
     private Dao dao;
     private String llamaServerUrl;
