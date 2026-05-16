@@ -11,11 +11,11 @@
       ]
     },
     {
-    "name": "mcp-server-rogo",
-    "type": "http",
-    "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
-    "use_url_as_endpoint": true,
-    "headers": {
+      "name": "mcp-server-rogo",
+      "type": "http",
+      "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
+      "use_url_as_endpoint": true,
+      "headers": {
     "authorization": "Bearer <access_token>"
     }
   ]
