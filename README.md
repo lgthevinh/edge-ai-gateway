@@ -223,7 +223,6 @@ Keep MCP tool descriptions concise. Large tool descriptions increase prompt size
 | `EMBEDDING_SERVER_URL` | OpenAI-compatible embedding server URL |
 | `EMBEDDING_MODEL` | Embedding model name sent to the server |
 | `EMBEDDING_DIMENSIONS` | Embedding vector dimensions used to initialize vector search |
-| `KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS` | Maximum Knowledge text appended to the system instruction |
 
 ## Useful Commands
 
