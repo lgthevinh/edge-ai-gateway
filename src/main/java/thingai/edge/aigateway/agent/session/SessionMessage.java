@@ -1,4 +1,4 @@
-package thingai.edge.aigateway.handler.session;
+package thingai.edge.aigateway.agent.session;
 
 import org.thingai.base.dao.annotations.DaoColumn;
 import org.thingai.base.dao.annotations.DaoTable;

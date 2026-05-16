@@ -1,20 +1,20 @@
 import { DOCUMENT } from '@angular/common';
 import { inject, Injectable, NgZone } from '@angular/core';
-import { AgentHistoryMessage, AgentStreamHandlers, ResponseUsage } from './chat.models';
+import { AgentStreamHandlers, ResponseUsage } from './chat.models';
 
 @Injectable({ providedIn: 'root' })
 export class AgentChatService {
   private readonly document = inject(DOCUMENT);
   private readonly zone = inject(NgZone);
 
-  async stream(sessionId: string, message: string, history: AgentHistoryMessage[], handlers: AgentStreamHandlers): Promise<EventSource | null> {
+  async stream(sessionId: string, message: string, handlers: AgentStreamHandlers): Promise<EventSource | null> {
     const EventSourceCtor = this.document.defaultView?.EventSource;
     if (!EventSourceCtor) {
       handlers.error();
       return null;
     }
 
-    const streamId = await this.startStream(sessionId, message, history);
+    const streamId = await this.startStream(sessionId, message);
     if (!streamId) {
       handlers.error();
       return null;
@@ -53,12 +53,12 @@ export class AgentChatService {
     return source;
   }
 
-  private async startStream(sessionId: string, message: string, history: AgentHistoryMessage[]): Promise<string | null> {
+  private async startStream(sessionId: string, message: string): Promise<string | null> {
     try {
       const response = await fetch('/api/agent/chat/stream/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ session_id: sessionId, message, history })
+        body: JSON.stringify({ session_id: sessionId, message })
       });
       if (!response.ok) return null;
       const data: unknown = await response.json();

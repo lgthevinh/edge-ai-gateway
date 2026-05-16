@@ -2,7 +2,7 @@ import { ChangeDetectionStrategy, Component, computed, ElementRef, inject, signa
 import { FormsModule } from '@angular/forms';
 import { AgentChatService } from '../../services/agent-chat.service';
 import { ChatMessage, ChatStatus, ResponseUsage } from '../../services/chat.models';
-import { DocumentService, UploadedDocument } from '../../services/document.service';
+import { DocumentService, RagChunk, UploadedDocument } from '../../services/document.service';
 import { SessionStoreService } from '../../services/session-store.service';
 import { MarkdownService } from '../../middleware/markdown.service';
 
@@ -22,28 +22,48 @@ export class ChatShell {
   @ViewChild('chatBox') private chatBox?: ElementRef<HTMLElement>;
   @ViewChild('inputBox') private inputBox?: ElementRef<HTMLTextAreaElement>;
   @ViewChild('knowledgeTitleInput') private knowledgeTitleInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('ragTitleInput') private ragTitleInput?: ElementRef<HTMLInputElement>;
+  @ViewChild('ragSearchInput') private ragSearchInput?: ElementRef<HTMLInputElement>;
 
   readonly input = signal('');
   readonly sessionInput = signal(this.sessionStore.activeSessionId());
   readonly status = signal<ChatStatus>('idle');
   readonly isBusy = computed(() => this.status() !== 'idle');
   readonly activeUsage = this.sessionStore.activeUsage;
+  readonly contextLength = this.sessionStore.contextLength;
+  readonly contextLimit = 131072;
   readonly knowledgeTitle = signal('');
   readonly knowledgeDescription = signal('');
   readonly knowledgeContent = signal('');
-  readonly knowledgeQuery = signal('');
   readonly knowledgeStatus = signal('');
   readonly knowledgeDocuments = signal<UploadedDocument[]>([]);
-  readonly knowledgeResults = signal<UploadedDocument[]>([]);
   readonly selectedKnowledgeTitle = signal('');
   readonly isEditingKnowledge = computed(() => Boolean(this.selectedKnowledgeTitle()));
   readonly isLoadingKnowledge = signal(false);
   readonly isSavingKnowledge = signal(false);
   readonly isDeletingKnowledge = signal(false);
-  readonly isSearchingKnowledge = signal(false);
   readonly isKnowledgeDialogOpen = signal(false);
   readonly isKnowledgeBusy = computed(() =>
-    this.isLoadingKnowledge() || this.isSavingKnowledge() || this.isDeletingKnowledge() || this.isSearchingKnowledge()
+    this.isLoadingKnowledge() || this.isSavingKnowledge() || this.isDeletingKnowledge()
+  );
+  readonly ragTitle = signal('');
+  readonly ragSource = signal('');
+  readonly ragContent = signal('');
+  readonly ragQuery = signal('');
+  readonly ragStatus = signal('');
+  readonly ragChunks = signal<RagChunk[]>([]);
+  readonly ragResults = signal<RagChunk[]>([]);
+  readonly selectedRagChunkId = signal('');
+  readonly isEditingRag = computed(() => Boolean(this.selectedRagChunkId()));
+  readonly ragWordCount = computed(() => this.countWords(this.ragContent()));
+  readonly isRagContentTooLong = computed(() => this.ragWordCount() > 200);
+  readonly isLoadingRag = signal(false);
+  readonly isSavingRag = signal(false);
+  readonly isDeletingRag = signal(false);
+  readonly isSearchingRag = signal(false);
+  readonly isRagDialogOpen = signal(false);
+  readonly isRagBusy = computed(() =>
+    this.isLoadingRag() || this.isSavingRag() || this.isDeletingRag() || this.isSearchingRag()
   );
 
   private activeSource: EventSource | null = null;
@@ -61,9 +81,9 @@ export class ChatShell {
     queueMicrotask(() => this.focusInput());
   }
 
-  deleteActiveSession(): void {
+  async deleteActiveSession(): Promise<void> {
     if (this.isBusy()) return;
-    const nextId = this.sessionStore.deleteSession(this.sessionStore.activeSessionId());
+    const nextId = await this.sessionStore.deleteSession(this.sessionStore.activeSessionId());
     this.sessionInput.set(nextId);
     queueMicrotask(() => this.focusInput());
   }
@@ -77,6 +97,18 @@ export class ChatShell {
     this.isKnowledgeDialogOpen.set(true);
     void this.loadKnowledgeDocuments();
     queueMicrotask(() => this.knowledgeTitleInput?.nativeElement.focus());
+  }
+
+  openRagDialog(): void {
+    if (this.isBusy() || this.isRagBusy()) return;
+    this.isRagDialogOpen.set(true);
+    void this.loadRagChunks();
+    queueMicrotask(() => this.ragSearchInput?.nativeElement.focus());
+  }
+
+  closeRagDialog(): void {
+    if (this.isSavingRag() || this.isDeletingRag()) return;
+    this.isRagDialogOpen.set(false);
   }
 
   closeKnowledgeDialog(): void {
@@ -169,7 +201,6 @@ export class ChatShell {
         this.knowledgeDescription.set('');
         this.knowledgeContent.set('');
       }
-      this.knowledgeResults.update((documents) => documents.filter((document) => document.title !== title));
       await this.loadKnowledgeDocuments();
       this.knowledgeStatus.set(`Deleted ${title}`);
     } catch (error) {
@@ -179,30 +210,127 @@ export class ChatShell {
     }
   }
 
-  async searchKnowledge(): Promise<void> {
-    const query = this.knowledgeQuery().trim();
-    if (!query || this.isBusy() || this.isKnowledgeBusy()) return;
+  createRagChunk(): void {
+    if (this.isRagBusy()) return;
+    this.selectedRagChunkId.set('');
+    this.ragTitle.set('');
+    this.ragSource.set('');
+    this.ragContent.set('');
+    this.ragStatus.set('Creating a new RAG chunk');
+    queueMicrotask(() => this.ragTitleInput?.nativeElement.focus());
+  }
 
-    this.isSearchingKnowledge.set(true);
-    this.knowledgeStatus.set('Searching knowledge...');
+  async loadRagChunks(): Promise<void> {
+    if (this.isLoadingRag()) return;
+
+    this.isLoadingRag.set(true);
+    this.ragStatus.set('Loading RAG chunks...');
     try {
-      const result = await this.documentService.searchDocuments(query);
-      this.knowledgeResults.set(result.documents);
-      this.knowledgeStatus.set(result.documents.length > 0 ? `${result.documents.length} result(s)` : 'No matching documents');
+      const result = await this.documentService.listRagChunks();
+      this.ragChunks.set(result.chunks);
+      this.ragStatus.set(result.chunks.length > 0 ? `${result.chunks.length} chunk(s)` : 'No RAG chunks yet');
     } catch (error) {
-      this.knowledgeResults.set([]);
-      this.knowledgeStatus.set(error instanceof Error ? error.message : 'Search failed');
+      this.ragStatus.set(error instanceof Error ? error.message : 'Load failed');
     } finally {
-      this.isSearchingKnowledge.set(false);
+      this.isLoadingRag.set(false);
+    }
+  }
+
+  async readRagChunk(chunkId: string): Promise<void> {
+    if (!chunkId || this.isBusy() || this.isRagBusy()) return;
+
+    this.isLoadingRag.set(true);
+    this.ragStatus.set('Reading RAG chunk...');
+    try {
+      const chunk = await this.documentService.getRagChunk(chunkId);
+      this.selectedRagChunkId.set(chunk.chunk_id);
+      this.ragTitle.set(chunk.title);
+      this.ragSource.set(chunk.source || '');
+      this.ragContent.set(chunk.content);
+      this.ragStatus.set(`Loaded ${chunk.title}`);
+      if (!this.isRagDialogOpen()) this.isRagDialogOpen.set(true);
+    } catch (error) {
+      this.ragStatus.set(error instanceof Error ? error.message : 'Read failed');
+    } finally {
+      this.isLoadingRag.set(false);
+    }
+  }
+
+  async saveRagChunk(): Promise<void> {
+    const title = this.ragTitle().trim();
+    const source = this.ragSource().trim();
+    const content = this.ragContent().trim();
+    if (!title || !content || this.isBusy() || this.isRagBusy() || this.isRagContentTooLong()) return;
+
+    this.isSavingRag.set(true);
+    this.ragStatus.set(`Saving ${title}...`);
+    try {
+      const chunk = await this.documentService.saveRagChunk({
+        ...(this.selectedRagChunkId() ? { chunk_id: this.selectedRagChunkId() } : {}),
+        title,
+        source,
+        content
+      });
+      this.ragTitle.set('');
+      this.ragSource.set('');
+      this.ragContent.set('');
+      this.selectedRagChunkId.set('');
+      await this.loadRagChunks();
+      this.ragStatus.set(`Saved ${chunk.title}`);
+    } catch (error) {
+      this.ragStatus.set(error instanceof Error ? error.message : 'Save failed');
+    } finally {
+      this.isSavingRag.set(false);
+    }
+  }
+
+  async deleteRagChunk(chunkId = this.selectedRagChunkId()): Promise<void> {
+    if (!chunkId || this.isBusy() || this.isRagBusy()) return;
+    if (!this.documentService.confirm('Delete this RAG chunk?')) return;
+
+    this.isDeletingRag.set(true);
+    this.ragStatus.set('Deleting RAG chunk...');
+    try {
+      await this.documentService.deleteRagChunk(chunkId);
+      if (this.selectedRagChunkId() === chunkId) {
+        this.selectedRagChunkId.set('');
+        this.ragTitle.set('');
+        this.ragSource.set('');
+        this.ragContent.set('');
+      }
+      this.ragResults.update((chunks) => chunks.filter((chunk) => chunk.chunk_id !== chunkId));
+      await this.loadRagChunks();
+      this.ragStatus.set('Deleted RAG chunk');
+    } catch (error) {
+      this.ragStatus.set(error instanceof Error ? error.message : 'Delete failed');
+    } finally {
+      this.isDeletingRag.set(false);
+    }
+  }
+
+  async searchRag(): Promise<void> {
+    const query = this.ragQuery().trim();
+    if (!query || this.isBusy() || this.isRagBusy()) return;
+
+    this.isSearchingRag.set(true);
+    this.ragStatus.set('Searching RAG chunks...');
+    try {
+      const result = await this.documentService.searchRagChunks(query);
+      this.ragResults.set(result.chunks);
+      this.ragStatus.set(result.chunks.length > 0 ? `${result.chunks.length} result(s)` : 'No matching chunks');
+    } catch (error) {
+      this.ragResults.set([]);
+      this.ragStatus.set(error instanceof Error ? error.message : 'Search failed');
+    } finally {
+      this.isSearchingRag.set(false);
     }
   }
 
   send(): void {
     const text = this.input().trim();
-    if (!text || this.isBusy() || this.isKnowledgeBusy()) return;
+    if (!text || this.isBusy() || this.isKnowledgeBusy() || this.isRagBusy()) return;
 
     const sessionId = this.sessionStore.activeSessionId() || this.sessionStore.createSession();
-    const history = this.sessionStore.getHistoryForRequest();
     this.sessionInput.set(sessionId);
     this.input.set('');
     this.resizeInput();
@@ -217,7 +345,7 @@ export class ChatShell {
     let tokenBuffer = '';
     let finalBuffer = '';
 
-    void this.agentChat.stream(sessionId, text, history, {
+    void this.agentChat.stream(sessionId, text, {
       turn: (tools) => {
         this.sessionStore.updateMessage(assistant.id, { tools: [...this.findMessage(assistant.id).tools, tools] });
         this.status.set('thinking');
@@ -269,6 +397,12 @@ export class ChatShell {
     if (event.key !== 'Escape') return;
     event.preventDefault();
     this.closeKnowledgeDialog();
+  }
+
+  onRagDialogKeydown(event: KeyboardEvent): void {
+    if (event.key !== 'Escape') return;
+    event.preventDefault();
+    this.closeRagDialog();
   }
 
   resizeInput(): void {
@@ -337,5 +471,11 @@ export class ChatShell {
     const minutes = Math.floor(seconds / 60);
     const remainingSeconds = Math.round(seconds % 60).toString().padStart(2, '0');
     return `${minutes}:${remainingSeconds}`;
+  }
+
+  private countWords(value: string): number {
+    const text = value.trim();
+    if (!text) return 0;
+    return text.split(/\s+/).length;
   }
 }

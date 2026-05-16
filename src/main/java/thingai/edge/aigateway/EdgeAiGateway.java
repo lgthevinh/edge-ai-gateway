@@ -18,8 +18,8 @@ import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
 import thingai.edge.aigateway.handler.rag.RagChunk;
 import thingai.edge.aigateway.handler.rag.RagHandler;
 import thingai.edge.aigateway.llm.LlamaCppProvider;
-import thingai.edge.aigateway.handler.session.Session;
-import thingai.edge.aigateway.handler.session.SessionMessage;
+import thingai.edge.aigateway.agent.session.Session;
+import thingai.edge.aigateway.agent.session.SessionMessage;
 
 import java.io.IOException;
 import java.nio.file.Files;

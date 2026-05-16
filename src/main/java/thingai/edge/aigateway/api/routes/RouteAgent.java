@@ -6,21 +6,21 @@ import io.javalin.http.sse.SseClient;
 import org.thingai.base.log.ILog;
 import thingai.edge.aigateway.EdgeAiGateway;
 import thingai.edge.aigateway.agent.AgentChainCallback;
-import thingai.edge.aigateway.llm.message.Message;
-import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.response.ResponseUsage;
+import thingai.edge.aigateway.agent.session.Session;
+import thingai.edge.aigateway.agent.session.SessionMessage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
 
-import java.util.ArrayList;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
+import static io.javalin.apibuilder.ApiBuilder.get;
+import static io.javalin.apibuilder.ApiBuilder.delete;
 import static io.javalin.apibuilder.ApiBuilder.path;
 import static io.javalin.apibuilder.ApiBuilder.post;
 
@@ -56,12 +56,66 @@ public class RouteAgent implements EndpointGroup {
                 String streamId = UUID.randomUUID().toString();
                 STREAM_REQUESTS.put(streamId, new StreamRequest(
                         body.get("session_id").getAsString(),
-                        body.get("message").getAsString(),
-                        parseHistory(body)
+                        body.get("message").getAsString()
                 ));
 
                 JsonObject response = new JsonObject();
                 response.addProperty("stream_id", streamId);
+                ctx.json(JsonUtil.toJson(response));
+            });
+            get("/chat/history", ctx -> {
+                String sessionId = ctx.queryParam("session_id");
+                if (sessionId == null || sessionId.isBlank()) {
+                    ctx.status(400).result("{\"error\":\"session_id is required\"}");
+                    return;
+                }
+
+                JsonArray messages = new JsonArray();
+                for (SessionMessage row : EdgeAiGateway.getAgentOrchestrator().getHistoryRows(sessionId)) {
+                    JsonObject item = new JsonObject();
+                    item.addProperty("message_id", row.messageId);
+                    item.addProperty("session_id", row.sessionId);
+                    item.addProperty("sequence", row.sequence);
+                    item.addProperty("role", row.role);
+                    item.addProperty("content", row.content != null ? row.content : "");
+                    if (row.toolCallsJson != null && !row.toolCallsJson.isBlank()) {
+                        item.add("tool_calls", JsonUtil.fromJson(row.toolCallsJson, JsonArray.class));
+                    }
+                    if (row.toolCallId != null) item.addProperty("tool_call_id", row.toolCallId);
+                    item.addProperty("created_at", row.createdAt);
+                    messages.add(item);
+                }
+
+                JsonObject response = new JsonObject();
+                response.addProperty("session_id", sessionId);
+                response.add("messages", messages);
+                ctx.json(JsonUtil.toJson(response));
+            });
+            get("/chat/sessions", ctx -> {
+                JsonArray sessions = new JsonArray();
+                for (Session row : EdgeAiGateway.getAgentOrchestrator().getSessions()) {
+                    JsonObject item = new JsonObject();
+                    item.addProperty("session_id", row.sessionId);
+                    item.addProperty("agent_id", row.agentId);
+                    item.addProperty("created_at", row.createdAt);
+                    item.addProperty("updated_at", row.updatedAt);
+                    sessions.add(item);
+                }
+
+                JsonObject response = new JsonObject();
+                response.add("sessions", sessions);
+                ctx.json(JsonUtil.toJson(response));
+            });
+            delete("/chat/sessions/{sessionId}", ctx -> {
+                String sessionId = ctx.pathParam("sessionId");
+                if (sessionId == null || sessionId.isBlank()) {
+                    ctx.status(400).result("{\"error\":\"sessionId is required\"}");
+                    return;
+                }
+
+                EdgeAiGateway.getAgentOrchestrator().deleteSession(sessionId);
+                JsonObject response = new JsonObject();
+                response.addProperty("deleted", true);
                 ctx.json(JsonUtil.toJson(response));
             });
         });
@@ -80,7 +134,7 @@ public class RouteAgent implements EndpointGroup {
             AtomicReference<ResponseUsage> latestUsage = new AtomicReference<>();
             client.onClose(done::countDown);
 
-            EdgeAiGateway.getAgentOrchestrator().runAsyncWithHistory(request.message, request.history, new AgentChainCallback() {
+            EdgeAiGateway.getAgentOrchestrator().runAsync(request.sessionId, request.message, new AgentChainCallback() {
                 @Override
                 public void onTurn(int turn, String agentName, String[] toolsUsed) {
                     if (!client.terminated()) {
@@ -155,35 +209,9 @@ public class RouteAgent implements EndpointGroup {
         if (params == null || !params.has("session_id") || !params.has("message")) return null;
         return new StreamRequest(
                 params.get("session_id").getAsString(),
-                params.get("message").getAsString(),
-                parseHistory(params)
+                params.get("message").getAsString()
         );
     }
 
-    private Message[] parseHistory(JsonObject body) {
-        if (body == null || !body.has("history") || !body.get("history").isJsonArray()) {
-            return new Message[0];
-        }
-
-        JsonArray history = body.getAsJsonArray("history");
-        ArrayList<Message> messages = new ArrayList<>();
-        for (JsonElement element : history) {
-            if (!element.isJsonObject()) continue;
-            JsonObject item = element.getAsJsonObject();
-            if (!item.has("role") || !item.has("content")) continue;
-
-            String role = item.get("role").getAsString();
-            String content = item.get("content").getAsString();
-            if (content == null || content.isBlank()) continue;
-
-            if (MessageRole.USER.equals(role)) {
-                messages.add(new Message(MessageRole.USER, content));
-            } else if (MessageRole.MODEL.equals(role)) {
-                messages.add(new Message(MessageRole.MODEL, content));
-            }
-        }
-        return messages.toArray(new Message[0]);
-    }
-
-    private record StreamRequest(String sessionId, String message, Message[] history) {}
+    private record StreamRequest(String sessionId, String message) {}
 }

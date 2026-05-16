@@ -32,53 +32,25 @@
         </select>
       }
 
-      <div class="usage-panel">
-        <div class="usage-total">{{ activeUsage().totalTokens }}</div>
-        <div class="usage-caption">session tokens</div>
-        <div class="usage-grid">
-          <span>Input</span>
-          <strong>{{ activeUsage().promptTokens }}</strong>
-          <span>Output</span>
-          <strong>{{ activeUsage().completionTokens }}</strong>
-        </div>
-      </div>
-
       <div class="knowledge-panel">
-        <label class="session-label" for="knowledge-search">Knowledge</label>
+        <label class="session-label">Knowledge</label>
         <button class="knowledge-button" type="button" (click)="openKnowledgeDialog()" [disabled]="isBusy() || isKnowledgeBusy()">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
           <span>Add knowledge base</span>
         </button>
-
-        <div class="knowledge-search-row">
-          <input
-            id="knowledge-search"
-            type="text"
-            placeholder="Semantic search"
-            [ngModel]="knowledgeQuery()"
-            (ngModelChange)="knowledgeQuery.set($event)"
-            (keydown.enter)="searchKnowledge()"
-            [disabled]="isBusy() || isKnowledgeBusy()"
-          >
-          <button class="knowledge-icon-button" type="button" (click)="searchKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeQuery().trim()" title="Search knowledge" aria-label="Search knowledge">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
-          </button>
-        </div>
         @if (knowledgeStatus()) {
           <div class="knowledge-status">{{ knowledgeStatus() }}</div>
         }
-        @if (knowledgeResults().length > 0) {
-          <div class="knowledge-results">
-            @for (result of knowledgeResults(); track result.title) {
-              <button class="knowledge-result" type="button" (click)="readKnowledge(result.title)" [disabled]="isBusy() || isKnowledgeBusy()" [title]="'Read ' + result.title">
-                <strong>{{ result.title }}</strong>
-                <span>{{ result.description }}</span>
-                @if (result.distance !== undefined) {
-                  <code>distance {{ result.distance.toFixed(4) }}</code>
-                }
-              </button>
-            }
-          </div>
+      </div>
+
+      <div class="knowledge-panel">
+        <label class="session-label">RAG</label>
+        <button class="knowledge-button" type="button" (click)="openRagDialog()" [disabled]="isBusy() || isRagBusy()">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+          <span>Add RAG chunk</span>
+        </button>
+        @if (ragStatus()) {
+          <div class="knowledge-status">{{ ragStatus() }}</div>
         }
       </div>
     </section>
@@ -144,6 +116,9 @@
     </div>
 
     <div class="chat-input-wrap">
+      <div class="chat-input-hint">
+        Context length: {{ contextLength() }}/{{ contextLimit }}
+      </div>
       <div class="chat-input-box">
         <textarea
           #inputBox
@@ -166,7 +141,10 @@
     <div class="dialog-backdrop" role="presentation" (click)="closeKnowledgeDialog()"></div>
     <section class="knowledge-dialog" role="dialog" aria-modal="true" aria-labelledby="knowledge-dialog-title" (keydown)="onKnowledgeDialogKeydown($event)">
       <div class="dialog-header">
-        <h2 id="knowledge-dialog-title">Knowledge base</h2>
+        <div class="dialog-title-block">
+          <h2 id="knowledge-dialog-title">Knowledge base</h2>
+          <p>Long-term knowledge appended to the system instruction to utilize llama.cpp KV cache.</p>
+        </div>
         <button class="dialog-close" type="button" (click)="closeKnowledgeDialog()" [disabled]="isSavingKnowledge() || isDeletingKnowledge()" title="Close" aria-label="Close dialog">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
         </button>
@@ -235,6 +213,122 @@
         </button>
         <button class="dialog-primary" type="button" (click)="saveKnowledge()" [disabled]="isBusy() || isKnowledgeBusy() || !knowledgeTitle().trim() || !knowledgeDescription().trim() || !knowledgeContent().trim()">
           {{ isSavingKnowledge() ? 'Saving...' : isEditingKnowledge() ? 'Update' : 'Create' }}
+        </button>
+      </div>
+    </section>
+  }
+
+  @if (isRagDialogOpen()) {
+    <div class="dialog-backdrop" role="presentation" (click)="closeRagDialog()"></div>
+    <section class="knowledge-dialog" role="dialog" aria-modal="true" aria-labelledby="rag-dialog-title" (keydown)="onRagDialogKeydown($event)">
+      <div class="dialog-header">
+        <div class="dialog-title-block">
+          <h2 id="rag-dialog-title">RAG chunks</h2>
+          <p>Short dynamic content chunks used for semantic search before answering.</p>
+        </div>
+        <button class="dialog-close" type="button" (click)="closeRagDialog()" [disabled]="isSavingRag() || isDeletingRag()" title="Close" aria-label="Close dialog">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+        </button>
+      </div>
+
+      <div class="dialog-body knowledge-manager">
+        <aside class="document-list" aria-label="RAG chunks">
+          <div class="document-list-header">
+            <span>Chunks</span>
+            <button class="document-new-button" type="button" (click)="createRagChunk()" [disabled]="isRagBusy()" title="New RAG chunk" aria-label="New RAG chunk">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+            </button>
+          </div>
+
+          <div class="knowledge-search-row">
+            <input
+              #ragSearchInput
+              id="rag-search"
+              type="text"
+              placeholder="Search RAG chunks"
+              [ngModel]="ragQuery()"
+              (ngModelChange)="ragQuery.set($event)"
+              (keydown.enter)="searchRag()"
+              [disabled]="isBusy() || isRagBusy()"
+            >
+            <button class="knowledge-icon-button" type="button" (click)="searchRag()" [disabled]="isBusy() || isRagBusy() || !ragQuery().trim()" title="Search RAG" aria-label="Search RAG">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+            </button>
+          </div>
+
+          @if (ragResults().length > 0) {
+            <div class="knowledge-results">
+              @for (result of ragResults(); track result.chunk_id) {
+                <button class="knowledge-result" type="button" (click)="readRagChunk(result.chunk_id)" [disabled]="isBusy() || isRagBusy()" [title]="'Read ' + result.title">
+                  <strong>{{ result.title }}</strong>
+                  <span>{{ result.content }}</span>
+                  @if (result.distance !== undefined) {
+                    <code>distance {{ result.distance.toFixed(4) }}</code>
+                  }
+                </button>
+              }
+            </div>
+          }
+
+          <div class="document-list-scroll">
+            @if (ragChunks().length === 0) {
+              <div class="document-empty">{{ isLoadingRag() ? 'Loading...' : 'No RAG chunks' }}</div>
+            }
+            @for (chunk of ragChunks(); track chunk.chunk_id) {
+              <button class="document-list-item" type="button" (click)="readRagChunk(chunk.chunk_id)" [class.selected]="selectedRagChunkId() === chunk.chunk_id" [disabled]="isRagBusy()" [title]="'Read ' + chunk.title">
+                <strong>{{ chunk.title }}</strong>
+                <span>{{ chunk.source || 'No source' }}</span>
+              </button>
+            }
+          </div>
+        </aside>
+
+        <section class="document-editor" aria-label="RAG chunk editor">
+          <label class="dialog-label" for="dialog-rag-title">Title</label>
+          <input
+            #ragTitleInput
+            id="dialog-rag-title"
+            type="text"
+            placeholder="Chunk title"
+            [ngModel]="ragTitle()"
+            (ngModelChange)="ragTitle.set($event)"
+            [disabled]="isSavingRag() || isDeletingRag()"
+          >
+
+          <label class="dialog-label" for="dialog-rag-source">Source</label>
+          <input
+            id="dialog-rag-source"
+            type="text"
+            placeholder="Optional source"
+            [ngModel]="ragSource()"
+            (ngModelChange)="ragSource.set($event)"
+            [disabled]="isSavingRag() || isDeletingRag()"
+          >
+
+          <div class="dialog-label-row">
+            <label class="dialog-label" for="dialog-rag-content">Content chunk</label>
+            <span class="word-count" [class.invalid]="isRagContentTooLong()">{{ ragWordCount() }}/200 words</span>
+          </div>
+          <textarea
+            id="dialog-rag-content"
+            class="dialog-textarea"
+            [class.invalid]="isRagContentTooLong()"
+            placeholder="Short searchable content, 200 words max"
+            rows="10"
+            [ngModel]="ragContent()"
+            (ngModelChange)="ragContent.set($event)"
+            [disabled]="isSavingRag() || isDeletingRag()"
+          ></textarea>
+        </section>
+      </div>
+
+      <div class="dialog-actions">
+        <button class="dialog-secondary" type="button" (click)="closeRagDialog()" [disabled]="isSavingRag() || isDeletingRag()">Close</button>
+        <button class="dialog-danger" type="button" (click)="deleteRagChunk()" [disabled]="isBusy() || isRagBusy() || !selectedRagChunkId()">
+          {{ isDeletingRag() ? 'Deleting...' : 'Delete' }}
+        </button>
+        <button class="dialog-primary" type="button" (click)="saveRagChunk()" [disabled]="isBusy() || isRagBusy() || !ragTitle().trim() || !ragContent().trim() || isRagContentTooLong()">
+          {{ isSavingRag() ? 'Saving...' : isEditingRag() ? 'Update' : 'Create' }}
         </button>
       </div>
     </section>

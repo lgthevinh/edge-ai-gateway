@@ -19,6 +19,17 @@ export interface SessionRecord {
   usage?: ResponseUsage;
 }
 
+export interface PersistedSession {
+  session_id: string;
+  agent_id?: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface AgentSessionsResult {
+  sessions: PersistedSession[];
+}
+
 export interface ResponseUsage {
   promptTokens: number;
   completionTokens: number;
@@ -30,6 +41,21 @@ export interface ResponseUsage {
 export interface AgentHistoryMessage {
   role: 'user' | 'assistant';
   content: string;
+}
+
+export interface PersistedAgentMessage {
+  message_id: string;
+  role: 'user' | 'assistant' | 'tool' | 'system';
+  content: string;
+  sequence: number;
+  tool_calls?: unknown[];
+  tool_call_id?: string;
+  created_at: number;
+}
+
+export interface AgentHistoryResult {
+  session_id: string;
+  messages: PersistedAgentMessage[];
 }
 
 export interface AgentStreamHandlers {

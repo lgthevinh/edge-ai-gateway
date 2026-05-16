@@ -19,6 +19,23 @@ export interface KnowledgeDocumentInput {
   content: string;
 }
 
+export interface RagChunk {
+  chunk_id: string;
+  title: string;
+  source: string;
+  content: string;
+  created_at: number;
+  updated_at: number;
+  distance?: number;
+}
+
+export interface RagChunkInput {
+  chunk_id?: string;
+  title: string;
+  source: string;
+  content: string;
+}
+
 export interface DocumentListResult {
   documents: UploadedDocument[];
 }
@@ -26,6 +43,15 @@ export interface DocumentListResult {
 export interface DocumentSearchResult {
   query: string;
   documents: UploadedDocument[];
+}
+
+export interface RagChunkListResult {
+  chunks: RagChunk[];
+}
+
+export interface RagChunkSearchResult {
+  query: string;
+  chunks: RagChunk[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -89,6 +115,68 @@ export class DocumentService {
         )
       : result.documents;
     return { query, documents: documents.slice(0, topK) };
+  }
+
+  async listRagChunks(): Promise<RagChunkListResult> {
+    const fetchFn = this.getFetch('RAG list is only available in the browser.');
+
+    const response = await fetchFn('/api/rag/chunks');
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as RagChunkListResult;
+  }
+
+  async getRagChunk(chunkId: string): Promise<RagChunk> {
+    const fetchFn = this.getFetch('RAG reading is only available in the browser.');
+
+    const response = await fetchFn(`/api/rag/chunks/${encodeURIComponent(chunkId)}`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as RagChunk;
+  }
+
+  async saveRagChunk(input: RagChunkInput): Promise<RagChunk> {
+    const fetchFn = this.getFetch('RAG editing is only available in the browser.');
+
+    const response = await fetchFn('/api/rag/chunks', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as RagChunk;
+  }
+
+  async deleteRagChunk(chunkId: string): Promise<void> {
+    const fetchFn = this.getFetch('RAG deletion is only available in the browser.');
+
+    const response = await fetchFn(`/api/rag/chunks/${encodeURIComponent(chunkId)}`, {
+      method: 'DELETE'
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+  }
+
+  async searchRagChunks(query: string, topK = 5): Promise<RagChunkSearchResult> {
+    const fetchFn = this.getFetch('RAG search is only available in the browser.');
+
+    const response = await fetchFn('/api/rag/chunks/search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, top_k: topK })
+    });
+
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    return await response.json() as RagChunkSearchResult;
   }
 
   confirm(message: string): boolean {

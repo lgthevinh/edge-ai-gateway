@@ -7,7 +7,8 @@ import thingai.edge.aigateway.llm.message.MessageRole;
 import thingai.edge.aigateway.llm.message.ToolCall;
 import thingai.edge.aigateway.llm.response.Response;
 import thingai.edge.aigateway.llm.response.ResponseStreamCallback;
-import thingai.edge.aigateway.handler.session.SessionMessage;
+import thingai.edge.aigateway.agent.session.Session;
+import thingai.edge.aigateway.agent.session.SessionMessage;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import java.util.Arrays;
@@ -104,6 +105,24 @@ public class AgentOrchestrator {
         });
     }
 
+    public SessionMessage[] getHistoryRows(String sessionId) {
+        return loadHistoryRows(sessionId);
+    }
+
+    public Session[] getSessions() {
+        Session[] sessions = dao.readAll(Session.class);
+        if (sessions != null) {
+            Arrays.sort(sessions, (a, b) -> Long.compare(b.updatedAt, a.updatedAt));
+        }
+        return sessions != null ? sessions : new Session[0];
+    }
+
+    public void deleteSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        dao.deleteByColumn(SessionMessage.class, "session_id", sessionId);
+        dao.deleteByColumn(Session.class, "session_id", sessionId);
+    }
+
     // -------------------------------------------------------------------------
     // Chain: one turn loop per agent (single-agent = one loop)
     // -------------------------------------------------------------------------
@@ -113,8 +132,11 @@ public class AgentOrchestrator {
         // Single-agent shortcut — most common case
         if (agents.length == 1) {
             Message[] messages = agents[0].buildMessages(history, userInput);
-            String finalText = runTurnLoop(agents[0], messages, callback);
-            if (persistSession && finalText != null) persistMessages(sessionId, userInput, finalText, historyLength);
+            TurnResult result = runTurnLoop(agents[0], messages, callback);
+            String finalText = result.finalText();
+            if (persistSession && finalText != null) {
+                persistMessages(sessionId, historyLength, sliceNewMessages(result.messages(), history.length));
+            }
             if (callback != null) callback.onComplete(finalText);
             return finalText;
         }
@@ -144,7 +166,12 @@ public class AgentOrchestrator {
             }
         }
 
-        if (persistSession) persistMessages(sessionId, userInput, finalText, historyLength);
+        if (persistSession) {
+            persistMessages(sessionId, historyLength, new Message[] {
+                    new Message(MessageRole.USER, userInput),
+                    new Message(MessageRole.MODEL, finalText)
+            });
+        }
         if (callback != null) callback.onComplete(finalText);
         return finalText;
     }
@@ -157,7 +184,7 @@ public class AgentOrchestrator {
      * Runs the turn loop for a single agent. When a callback is present each
      * LLM turn streams, and the structured stream result decides whether tools run.
      */
-    private String runTurnLoop(Agent agent, Message[] messages, AgentChainCallback callback) {
+    private TurnResult runTurnLoop(Agent agent, Message[] messages, AgentChainCallback callback) {
         int turn = 0;
         Message[] current = messages;
 
@@ -199,13 +226,17 @@ public class AgentOrchestrator {
 
             // Agent decided to stop — deliver final answer
             if (callback != null && response.getUsage() != null) callback.onUsage(response.getUsage());
-            return response.getMessageContent();
+            Message finalMessage = response.getChoices()[0].getMessage();
+            Message[] completed = appendMessage(current, finalMessage);
+            return new TurnResult(response.getMessageContent(), completed);
         }
 
         // Safety cap reached
         ILog.d(TAG, "[" + agent.getName() + "] maxTurns (" + maxTurns + ") reached — returning last response");
         Response last = agent.call(current);
-        return last != null ? last.getMessageContent() : null;
+        if (last == null) return new TurnResult(null, current);
+        Message finalMessage = last.getChoices()[0].getMessage();
+        return new TurnResult(last.getMessageContent(), appendMessage(current, finalMessage));
     }
 
     /** Blocking-only variant used for intermediate agents in a multi-agent chain. */
@@ -264,26 +295,53 @@ public class AgentOrchestrator {
     // -------------------------------------------------------------------------
 
     private SessionMessage[] loadHistoryRows(String sessionId) {
-        SessionMessage[] rows = dao.query(SessionMessage.class, "session_id = ?", sessionId);
+        SessionMessage[] rows = dao.query(SessionMessage.class, "session_id", sessionId);
         if (rows != null) {
             Arrays.sort(rows, (a, b) -> Integer.compare(a.sequence, b.sequence));
         }
         return rows != null ? rows : new SessionMessage[0];
     }
 
-    private void persistMessages(String sessionId, String userInput, String reply, int historyLength) {
+    private void persistMessages(String sessionId, int historyLength, Message[] messages) {
+        if (sessionId == null || sessionId.isBlank() || messages == null || messages.length == 0) return;
+        persistSession(sessionId);
+
         int sequence = historyLength;
         long now = System.currentTimeMillis();
 
-        dao.insertOrUpdate(new SessionMessage(
-                UUID.randomUUID().toString(), sessionId, sequence++,
-                MessageRole.USER, userInput, null, null, now));
-
-        if (reply != null) {
+        for (Message message : messages) {
+            if (message == null || MessageRole.SYSTEM.equals(message.getRole())) continue;
             dao.insertOrUpdate(new SessionMessage(
-                    UUID.randomUUID().toString(), sessionId, sequence,
-                    MessageRole.MODEL, reply, null, null, now));
+                    UUID.randomUUID().toString(),
+                    sessionId,
+                    sequence++,
+                    message.getRole(),
+                    message.getContent(),
+                    message.getToolCalls() != null ? JsonUtil.toJson(message.getToolCalls()) : null,
+                    message.getToolCallId(),
+                    now
+            ));
         }
+    }
+
+    private void persistSession(String sessionId) {
+        long now = System.currentTimeMillis();
+        Session[] existing = dao.query(Session.class, "session_id", sessionId);
+        if (existing != null && existing.length > 0) {
+            Session session = existing[0];
+            session.updatedAt = now;
+            dao.insertOrUpdate(session);
+            return;
+        }
+        dao.insertOrUpdate(new Session(
+                sessionId,
+                agents.length > 0 ? agentName(0) : "assistant",
+                now,
+                now,
+                agents.length > 0 ? agents[0].getTemperature() : 0.7,
+                0,
+                0
+        ));
     }
 
     // -------------------------------------------------------------------------
@@ -309,6 +367,18 @@ public class AgentOrchestrator {
         return updated;
     }
 
+    private Message[] appendMessage(Message[] messages, Message message) {
+        Message[] updated = Arrays.copyOf(messages, messages.length + 1);
+        updated[messages.length] = message;
+        return updated;
+    }
+
+    private Message[] sliceNewMessages(Message[] messages, int historyLength) {
+        if (messages == null || messages.length == 0) return new Message[0];
+        int start = Math.min(messages.length, 1 + historyLength);
+        return Arrays.copyOfRange(messages, start, messages.length);
+    }
+
     private String agentName(int index) {
         String name = agents[index].getName();
         return name == null || name.isBlank() ? "agent-" + index : name;
@@ -327,4 +397,6 @@ public class AgentOrchestrator {
         for (int i = 0; i < tcs.length; i++) names[i] = tcs[i].getFunction().getName();
         return names;
     }
+
+    private record TurnResult(String finalText, Message[] messages) {}
 }
