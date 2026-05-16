@@ -16,7 +16,7 @@
       "url": "https://rogo-64770705.mcp-stag.dash.id.vn",
       "use_url_as_endpoint": true,
       "headers": {
-    "authorization": "Bearer <access_token>"
+      "authorization": "Bearer <access_token>"
     }
   ]
 }
