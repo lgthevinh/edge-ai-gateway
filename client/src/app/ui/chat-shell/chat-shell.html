@@ -27,7 +27,7 @@
         <label class="session-label" for="session-select">Continue</label>
         <select id="session-select" [ngModel]="sessionStore.activeSessionId()" (ngModelChange)="selectSession($event)" [disabled]="isBusy()">
           @for (session of sessionStore.sessions(); track session.id) {
-            <option [value]="session.id">{{ session.label }} - {{ session.id.slice(0, 8) }} - {{ session.usage?.totalTokens ?? 0 }} tokens</option>
+            <option [value]="session.id">{{ session.label }} - {{ session.id.slice(0, 8) }} - {{ session.contextLength ?? 0 }} context</option>
           }
         </select>
       }

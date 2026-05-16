@@ -17,6 +17,7 @@ export interface SessionRecord {
   createdAt: number;
   updatedAt: number;
   usage?: ResponseUsage;
+  contextLength?: number;
 }
 
 export interface PersistedSession {

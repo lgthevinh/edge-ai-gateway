@@ -47,7 +47,7 @@ export class SessionStoreService {
   createSession(): string {
     const id = this.createId();
     const now = Date.now();
-    const session: SessionRecord = { id, label: this.formatLabel(now), createdAt: now, updatedAt: now };
+    const session: SessionRecord = { id, label: this.formatLabel(now), createdAt: now, updatedAt: now, contextLength: 0 };
     this.sessions.update((sessions) => [session, ...sessions]);
     this.persistSessions();
     this.selectSession(id);
@@ -59,7 +59,7 @@ export class SessionStoreService {
     if (!cleanId) return;
     if (!this.sessions().some((session) => session.id === cleanId)) {
       const now = Date.now();
-      this.sessions.update((sessions) => [{ id: cleanId, label: this.formatLabel(now), createdAt: now, updatedAt: now }, ...sessions]);
+      this.sessions.update((sessions) => [{ id: cleanId, label: this.formatLabel(now), createdAt: now, updatedAt: now, contextLength: this.readSessionContextLength(cleanId) }, ...sessions]);
       this.persistSessions();
     }
     this.activeSessionId.set(cleanId);
@@ -202,7 +202,8 @@ export class SessionStoreService {
       byId.set(session.id, {
         ...existing,
         ...session,
-        usage: existing?.usage ?? this.readSessionUsage(session.id)
+        usage: existing?.usage ?? this.readSessionUsage(session.id),
+        contextLength: existing?.contextLength ?? this.readSessionContextLength(session.id)
       });
     }
     return [...byId.values()].sort((a, b) => b.updatedAt - a.updatedAt);
@@ -214,7 +215,8 @@ export class SessionStoreService {
       label: this.formatLabel(session.created_at),
       createdAt: session.created_at,
       updatedAt: session.updated_at,
-      usage: this.readSessionUsage(session.session_id)
+      usage: this.readSessionUsage(session.session_id),
+      contextLength: this.readSessionContextLength(session.session_id)
     };
   }
 
@@ -244,6 +246,8 @@ export class SessionStoreService {
     const sessionId = this.activeSessionId();
     if (!sessionId) return;
     this.storage.setItem(this.contextKey(sessionId), String(totalTokens));
+    this.sessions.update((sessions) => sessions.map((session) => session.id === sessionId ? { ...session, contextLength: totalTokens } : session));
+    this.persistSessions();
   }
 
   private persistActiveUsage(usage: ResponseUsage): void {
