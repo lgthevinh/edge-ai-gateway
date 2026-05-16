@@ -39,6 +39,8 @@ export class SessionStoreService {
         return;
       }
     }
+    this.activeUsage.set(this.readSessionUsage(this.activeSessionId()));
+    this.contextLength.set(this.readSessionContextLength(this.activeSessionId()));
     await this.loadMessages(this.activeSessionId());
   }
 
