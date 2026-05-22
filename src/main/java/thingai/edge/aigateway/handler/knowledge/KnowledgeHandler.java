@@ -52,6 +52,10 @@ public class KnowledgeHandler {
     }
 
     public KnowledgeDocument saveDocument(String title, String description, String content) {
+        return saveDocument(title, description, content, null);
+    }
+
+    public KnowledgeDocument saveDocument(String title, String description, String content, Boolean enabled) {
         if (title == null || title.isBlank()) {
             throw new IllegalArgumentException("title is required");
         }
@@ -61,9 +65,11 @@ public class KnowledgeHandler {
 
         KnowledgeDocument existing = getDocument(title);
         String documentContent = content != null ? content : "";
+        Boolean documentEnabled = enabled != null ? enabled : existing != null ? existing.enabled : Boolean.TRUE;
         if (existing != null
                 && Objects.equals(description, existing.description)
-                && Objects.equals(documentContent, existing.content)) {
+                && Objects.equals(documentContent, existing.content)
+                && Objects.equals(documentEnabled, existing.enabled)) {
             return existing;
         }
 
@@ -72,6 +78,7 @@ public class KnowledgeHandler {
                 title,
                 description,
                 documentContent,
+                documentEnabled,
                 existing != null ? existing.createdAt : now,
                 now
         );
@@ -86,7 +93,7 @@ public class KnowledgeHandler {
 
         StringBuilder documentsContext = new StringBuilder();
         for (KnowledgeDocument document : documents) {
-            if (document == null || isBlank(document.title) || isBlank(document.content)) {
+            if (document == null || !isEnabled(document) || isBlank(document.title) || isBlank(document.content)) {
                 continue;
             }
 
@@ -132,5 +139,9 @@ public class KnowledgeHandler {
 
     private static boolean isBlank(String value) {
         return value == null || value.trim().isEmpty();
+    }
+
+    public static boolean isEnabled(KnowledgeDocument document) {
+        return document != null && (document.enabled == null || document.enabled);
     }
 }

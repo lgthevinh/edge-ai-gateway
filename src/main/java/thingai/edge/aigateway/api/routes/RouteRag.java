@@ -3,7 +3,7 @@ package thingai.edge.aigateway.api.routes;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
-import thingai.edge.aigateway.EdgeAiGateway;
+import thingai.edge.aigateway.EdgeAiService;
 import thingai.edge.aigateway.handler.rag.RagChunk;
 import thingai.edge.aigateway.handler.rag.RagSearchResult;
 import thingai.edge.aigateway.utils.JsonUtil;
@@ -19,7 +19,7 @@ public class RouteRag implements EndpointGroup {
         path("rag/chunks", () -> {
             get(ctx -> {
                 JsonArray chunks = new JsonArray();
-                for (RagChunk chunk : EdgeAiGateway.getRagHandler().listChunks()) {
+                for (RagChunk chunk : EdgeAiService.getRagHandler().listChunks()) {
                     chunks.add(toSummaryJson(chunk));
                 }
                 JsonObject result = new JsonObject();
@@ -28,7 +28,7 @@ public class RouteRag implements EndpointGroup {
             });
 
             get("/{chunkId}", ctx -> {
-                RagChunk chunk = EdgeAiGateway.getRagHandler().getChunk(ctx.pathParam("chunkId"));
+                RagChunk chunk = EdgeAiService.getRagHandler().getChunk(ctx.pathParam("chunkId"));
                 if (chunk == null) {
                     ctx.status(404).result("{\"error\":\"chunk not found\"}");
                     return;
@@ -38,7 +38,7 @@ public class RouteRag implements EndpointGroup {
 
             delete("/{chunkId}", ctx -> {
                 try {
-                    boolean deleted = EdgeAiGateway.getRagHandler().deleteChunk(ctx.pathParam("chunkId"));
+                    boolean deleted = EdgeAiService.getRagHandler().deleteChunk(ctx.pathParam("chunkId"));
                     if (!deleted) {
                         ctx.status(404).result("{\"error\":\"chunk not found\"}");
                         return;
@@ -64,7 +64,7 @@ public class RouteRag implements EndpointGroup {
                     String query = body.get("query").getAsString();
                     int topK = body.has("top_k") ? body.get("top_k").getAsInt() : 5;
                     JsonArray chunks = new JsonArray();
-                    for (RagSearchResult searchResult : EdgeAiGateway.getRagHandler().searchChunks(query, topK)) {
+                    for (RagSearchResult searchResult : EdgeAiService.getRagHandler().searchChunks(query, topK)) {
                         chunks.add(toSearchJson(searchResult));
                     }
                     JsonObject result = new JsonObject();
@@ -91,7 +91,7 @@ public class RouteRag implements EndpointGroup {
                     String source = body.has("source") && !body.get("source").isJsonNull()
                             ? body.get("source").getAsString()
                             : "";
-                    RagChunk chunk = EdgeAiGateway.getRagHandler().saveChunk(
+                    RagChunk chunk = EdgeAiService.getRagHandler().saveChunk(
                             chunkId,
                             body.get("title").getAsString(),
                             body.get("content").getAsString(),

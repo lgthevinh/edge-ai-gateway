@@ -4,7 +4,7 @@ import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
 import io.javalin.http.sse.SseClient;
 import org.thingai.base.log.ILog;
-import thingai.edge.aigateway.EdgeAiGateway;
+import thingai.edge.aigateway.EdgeAiService;
 import thingai.edge.aigateway.agent.AgentChainCallback;
 import thingai.edge.aigateway.llm.response.ResponseUsage;
 import thingai.edge.aigateway.agent.session.Session;
@@ -40,7 +40,7 @@ public class RouteAgent implements EndpointGroup {
                 String sessionId = body.get("session_id").getAsString();
                 String message = body.get("message").getAsString();
 
-                String reply = EdgeAiGateway.getAgentOrchestrator().run(sessionId, message);
+                String reply = EdgeAiService.getAgentOrchestrator().run(sessionId, message);
 
                 JsonObject response = new JsonObject();
                 response.addProperty("reply", reply);
@@ -71,7 +71,7 @@ public class RouteAgent implements EndpointGroup {
                 }
 
                 JsonArray messages = new JsonArray();
-                for (SessionMessage row : EdgeAiGateway.getAgentOrchestrator().getHistoryRows(sessionId)) {
+                for (SessionMessage row : EdgeAiService.getAgentOrchestrator().getHistoryRows(sessionId)) {
                     JsonObject item = new JsonObject();
                     item.addProperty("message_id", row.messageId);
                     item.addProperty("session_id", row.sessionId);
@@ -93,7 +93,7 @@ public class RouteAgent implements EndpointGroup {
             });
             get("/chat/sessions", ctx -> {
                 JsonArray sessions = new JsonArray();
-                for (Session row : EdgeAiGateway.getAgentOrchestrator().getSessions()) {
+                for (Session row : EdgeAiService.getAgentOrchestrator().getSessions()) {
                     JsonObject item = new JsonObject();
                     item.addProperty("session_id", row.sessionId);
                     item.addProperty("agent_id", row.agentId);
@@ -113,7 +113,7 @@ public class RouteAgent implements EndpointGroup {
                     return;
                 }
 
-                EdgeAiGateway.getAgentOrchestrator().deleteSession(sessionId);
+                EdgeAiService.getAgentOrchestrator().deleteSession(sessionId);
                 JsonObject response = new JsonObject();
                 response.addProperty("deleted", true);
                 ctx.json(JsonUtil.toJson(response));
@@ -134,7 +134,7 @@ public class RouteAgent implements EndpointGroup {
             AtomicReference<ResponseUsage> latestUsage = new AtomicReference<>();
             client.onClose(done::countDown);
 
-            EdgeAiGateway.getAgentOrchestrator().runAsync(request.sessionId, request.message, new AgentChainCallback() {
+            EdgeAiService.getAgentOrchestrator().runAsync(request.sessionId, request.message, new AgentChainCallback() {
                 @Override
                 public void onTurn(int turn, String agentName, String[] toolsUsed) {
                     if (!client.terminated()) {

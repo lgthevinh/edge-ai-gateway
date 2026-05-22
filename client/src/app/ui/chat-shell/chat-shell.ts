@@ -35,6 +35,7 @@ export class ChatShell {
   readonly knowledgeTitle = signal('');
   readonly knowledgeDescription = signal('');
   readonly knowledgeContent = signal('');
+  readonly knowledgeEnabled = signal(true);
   readonly knowledgeStatus = signal('');
   readonly knowledgeDocuments = signal<UploadedDocument[]>([]);
   readonly selectedKnowledgeTitle = signal('');
@@ -122,6 +123,7 @@ export class ChatShell {
     this.knowledgeTitle.set('');
     this.knowledgeDescription.set('');
     this.knowledgeContent.set('');
+    this.knowledgeEnabled.set(true);
     this.knowledgeStatus.set('Creating a new document');
     queueMicrotask(() => this.knowledgeTitleInput?.nativeElement.focus());
   }
@@ -153,6 +155,7 @@ export class ChatShell {
       this.knowledgeTitle.set(document.title);
       this.knowledgeDescription.set(document.description);
       this.knowledgeContent.set(document.content);
+      this.knowledgeEnabled.set(document.enabled);
       this.knowledgeStatus.set(`Loaded ${document.title}`);
       if (!this.isKnowledgeDialogOpen()) {
         this.isKnowledgeDialogOpen.set(true);
@@ -168,15 +171,17 @@ export class ChatShell {
     const title = this.knowledgeTitle().trim();
     const description = this.knowledgeDescription().trim();
     const content = this.knowledgeContent().trim();
+    const enabled = this.knowledgeEnabled();
     if (!title || !description || !content || this.isBusy() || this.isKnowledgeBusy()) return;
 
     this.isSavingKnowledge.set(true);
     this.knowledgeStatus.set(`Saving ${title}...`);
     try {
-      const document = await this.documentService.saveDocument({ title, description, content });
+      const document = await this.documentService.saveDocument({ title, description, content, enabled });
       this.knowledgeTitle.set('');
       this.knowledgeDescription.set('');
       this.knowledgeContent.set('');
+      this.knowledgeEnabled.set(true);
       this.selectedKnowledgeTitle.set('');
       await this.loadKnowledgeDocuments();
       this.knowledgeStatus.set(`Saved ${document.title}`);
@@ -200,6 +205,7 @@ export class ChatShell {
         this.knowledgeTitle.set('');
         this.knowledgeDescription.set('');
         this.knowledgeContent.set('');
+        this.knowledgeEnabled.set(true);
       }
       await this.loadKnowledgeDocuments();
       this.knowledgeStatus.set(`Deleted ${title}`);

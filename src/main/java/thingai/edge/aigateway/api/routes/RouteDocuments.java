@@ -3,9 +3,10 @@ package thingai.edge.aigateway.api.routes;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import io.javalin.apibuilder.EndpointGroup;
-import thingai.edge.aigateway.EdgeAiGateway;
+import thingai.edge.aigateway.EdgeAiService;
 import thingai.edge.aigateway.handler.knowledge.DocumentImportResult;
 import thingai.edge.aigateway.handler.knowledge.KnowledgeDocument;
+import thingai.edge.aigateway.handler.knowledge.KnowledgeHandler;
 import thingai.edge.aigateway.utils.JsonUtil;
 
 import static io.javalin.apibuilder.ApiBuilder.delete;
@@ -19,7 +20,7 @@ public class RouteDocuments implements EndpointGroup {
         path("documents", () -> {
             get(ctx -> {
                 JsonArray documents = new JsonArray();
-                for (KnowledgeDocument document : EdgeAiGateway.getKnowledgeHandler().listDocuments()) {
+                for (KnowledgeDocument document : EdgeAiService.getKnowledgeHandler().listDocuments()) {
                     documents.add(toSummaryJson(document));
                 }
 
@@ -29,7 +30,7 @@ public class RouteDocuments implements EndpointGroup {
             });
 
             get("/{title}", ctx -> {
-                KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().getDocument(ctx.pathParam("title"));
+                KnowledgeDocument document = EdgeAiService.getKnowledgeHandler().getDocument(ctx.pathParam("title"));
                 if (document == null) {
                     ctx.status(404).result("{\"error\":\"document not found\"}");
                     return;
@@ -39,7 +40,7 @@ public class RouteDocuments implements EndpointGroup {
 
             delete("/{title}", ctx -> {
                 try {
-                    boolean deleted = EdgeAiGateway.getKnowledgeHandler().deleteDocument(ctx.pathParam("title"));
+                    boolean deleted = EdgeAiService.getKnowledgeHandler().deleteDocument(ctx.pathParam("title"));
                     if (!deleted) {
                         ctx.status(404).result("{\"error\":\"document not found\"}");
                         return;
@@ -57,7 +58,7 @@ public class RouteDocuments implements EndpointGroup {
             });
 
             post("/refresh", ctx -> {
-                DocumentImportResult importResult = EdgeAiGateway.getKnowledgeHandler().importMarkdownDocuments();
+                DocumentImportResult importResult = EdgeAiService.getKnowledgeHandler().importMarkdownDocuments();
                 ctx.json(JsonUtil.toJson(importResult));
             });
 
@@ -69,10 +70,11 @@ public class RouteDocuments implements EndpointGroup {
                         return;
                     }
 
-                    KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().saveDocument(
+                    KnowledgeDocument document = EdgeAiService.getKnowledgeHandler().saveDocument(
                             body.get("title").getAsString(),
                             body.get("description").getAsString(),
-                            body.get("content").getAsString()
+                            body.get("content").getAsString(),
+                            readEnabled(body)
                     );
 
                     ctx.json(JsonUtil.toJson(toDetailJson(document)));
@@ -91,10 +93,11 @@ public class RouteDocuments implements EndpointGroup {
                         return;
                     }
 
-                    KnowledgeDocument document = EdgeAiGateway.getKnowledgeHandler().saveDocument(
+                    KnowledgeDocument document = EdgeAiService.getKnowledgeHandler().saveDocument(
                             body.get("title").getAsString(),
                             body.get("description").getAsString(),
-                            body.get("content").getAsString()
+                            body.get("content").getAsString(),
+                            readEnabled(body)
                     );
 
                     ctx.json(JsonUtil.toJson(toDetailJson(document)));
@@ -111,6 +114,7 @@ public class RouteDocuments implements EndpointGroup {
         JsonObject item = new JsonObject();
         item.addProperty("title", document.title);
         item.addProperty("description", document.description);
+        item.addProperty("enabled", KnowledgeHandler.isEnabled(document));
         item.addProperty("updated_at", document.updatedAt);
         return item;
     }
@@ -120,6 +124,12 @@ public class RouteDocuments implements EndpointGroup {
         item.addProperty("content", document.content);
         item.addProperty("created_at", document.createdAt);
         return item;
+    }
+
+    private static Boolean readEnabled(JsonObject body) {
+        return body != null && body.has("enabled") && !body.get("enabled").isJsonNull()
+                ? body.get("enabled").getAsBoolean()
+                : null;
     }
 
 }

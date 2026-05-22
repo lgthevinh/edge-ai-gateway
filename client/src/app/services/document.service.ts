@@ -4,6 +4,7 @@ import { inject, Injectable } from '@angular/core';
 export interface UploadedDocument {
   title: string;
   description: string;
+  enabled: boolean;
   updated_at: number;
   distance?: number;
 }
@@ -17,6 +18,7 @@ export interface KnowledgeDocumentInput {
   title: string;
   description: string;
   content: string;
+  enabled?: boolean;
 }
 
 export interface RagChunk {

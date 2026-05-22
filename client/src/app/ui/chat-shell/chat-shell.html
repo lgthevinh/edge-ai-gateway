@@ -163,9 +163,10 @@
               <div class="document-empty">{{ isLoadingKnowledge() ? 'Loading...' : 'No documents' }}</div>
             }
             @for (document of knowledgeDocuments(); track document.title) {
-              <button class="document-list-item" type="button" (click)="readKnowledge(document.title)" [class.selected]="selectedKnowledgeTitle() === document.title" [disabled]="isKnowledgeBusy()" [title]="'Read ' + document.title">
+              <button class="document-list-item" type="button" (click)="readKnowledge(document.title)" [class.selected]="selectedKnowledgeTitle() === document.title" [class.document-disabled]="!document.enabled" [disabled]="isKnowledgeBusy()" [title]="'Read ' + document.title">
                 <strong>{{ document.title }}</strong>
                 <span>{{ document.description }}</span>
+                <code>{{ document.enabled ? 'system on' : 'system off' }}</code>
               </button>
             }
           </div>
@@ -192,6 +193,17 @@
             (ngModelChange)="knowledgeDescription.set($event)"
             [disabled]="isSavingKnowledge() || isDeletingKnowledge()"
           >
+
+          <label class="toggle-row" for="dialog-knowledge-enabled">
+            <input
+              id="dialog-knowledge-enabled"
+              type="checkbox"
+              [ngModel]="knowledgeEnabled()"
+              (ngModelChange)="knowledgeEnabled.set($event)"
+              [disabled]="isSavingKnowledge() || isDeletingKnowledge()"
+            >
+            <span>Include in system instruction</span>
+          </label>
 
           <label class="dialog-label" for="dialog-knowledge-content">Content</label>
           <textarea

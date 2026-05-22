@@ -310,6 +310,8 @@ select { font-family: var(--font); }
 }
 
 .document-list-item:disabled { opacity: .55; cursor: not-allowed; }
+.document-list-item.document-disabled { opacity: .72; }
+.document-list-item code { color: var(--tool); font-family: var(--mono); font-size: 10px; }
 
 .document-editor {
   min-width: 0;
@@ -322,6 +324,23 @@ select { font-family: var(--font); }
   color: var(--text-dim);
   font-size: 12px;
   font-weight: 650;
+}
+
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.toggle-row input {
+  width: 14px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0;
+  accent-color: var(--accent);
 }
 
 .dialog-body input {

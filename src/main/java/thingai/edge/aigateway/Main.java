@@ -4,7 +4,7 @@ import thingai.edge.aigateway.api.ApiServer;
 
 public class Main {
     public static void main(String[] args) {
-        EdgeAiGateway service = new EdgeAiGateway();
+        EdgeAiService service = new EdgeAiService();
         service.init();
         Runtime.getRuntime().addShutdownHook(new Thread(service::shutdown));
 

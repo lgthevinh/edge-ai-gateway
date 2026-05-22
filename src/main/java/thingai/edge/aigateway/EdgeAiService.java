@@ -27,7 +27,7 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
-public class EdgeAiGateway extends Service {
+public class EdgeAiService extends Service {
     private static final String TAG = "EdgeAiGateway";
     private static final int DEFAULT_EMBEDDING_DIMENSIONS = 1536;
     private static final int DEFAULT_KNOWLEDGE_SYSTEM_CONTEXT_MAX_CHARS = 64_000; //64k context windows
@@ -43,7 +43,7 @@ public class EdgeAiGateway extends Service {
     private static RagHandler ragHandler;
     private static String configuredLlamaServerUrl;
 
-    protected EdgeAiGateway() {
+    protected EdgeAiService() {
         super("edge-ai-gateway");
         setVersion("0.1.0");
         setAppDirName("edge-ai-gateway");
