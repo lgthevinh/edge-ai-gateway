@@ -1,6 +1,6 @@
-# Edge AI Gateway
+# Edge Agent
 
-Edge AI Gateway is a local AI agent service for edge devices. It runs a Java backend, an Angular web UI, local LLM inference through an OpenAI-compatible `llama-server`, persistent chat sessions in SQLite, optional MCP tools, a long-term Knowledge system, and a short-content RAG system.
+Edge Agent is a local AI agent service for edge devices. It runs a Java backend, an Angular web UI, local LLM inference through an OpenAI-compatible `llama-server`, persistent chat sessions in SQLite, optional MCP tools, a long-term Knowledge system, and a short-content RAG system.
 
 The project is designed for local-first agent use: the browser talks to the gateway, the gateway talks to local model servers and tools, and chat history is stored locally.
 
